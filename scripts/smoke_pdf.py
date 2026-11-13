@@ -1,5 +1,5 @@
 """Real Docling smoke test: generated digital and raster-only German PDF fixtures.
-Run from repository root: .venv/Scripts/python scripts/smoke_pdf.py
+Run from repository root: .venv/bin/python scripts/smoke_pdf.py (Windows: .venv/Scripts/python.exe)
 Downloads processing models on first use. No clinical data used.
 """
 import io, pathlib, sys, tempfile
@@ -23,7 +23,8 @@ with tempfile.TemporaryDirectory() as folder:
  assert any(s['provenance'] and s['provenance'][0]['page']==1 for s in segments)
  print('PASS digital PDF: text, offsets and page provenance',flush=True)
  image=Image.new('RGB',(1654,2339),'white');draw=ImageDraw.Draw(image)
- font=ImageFont.truetype('C:/Windows/Fonts/arial.ttf',36)
+ # Pillow's bundled scalable font works on every OS.
+ font=ImageFont.load_default(size=36)
  draw.text((100,120),'Berichtsdatum: 2024-03-12',fill='black',font=font)
  draw.text((100,190),'Links besteht eine Hydronephrose.',fill='black',font=font)
  scan=folder/'scan.pdf';image.save(scan,'PDF',resolution=200)

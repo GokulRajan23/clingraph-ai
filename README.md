@@ -2,12 +2,16 @@
 
 Local single-patient document ingestion workspace. The development reference studio is preserved at `/reference.html`.
 
-## Run on Windows
+## Run
 
 Python 3.12 is recommended. From this folder:
 
 ```powershell
-.\start.ps1
+.\start.ps1          # Windows
+```
+
+```bash
+./start.sh           # macOS/Linux (macOS: brew install python@3.12)
 ```
 
 Open http://127.0.0.1:8000. The first PDF downloads Docling/OCR models; allow internet access and time for CPU processing. Text uploads do not need those models. The app must run through the backend, rather than opening index.html directly.
@@ -31,6 +35,10 @@ Open http://127.0.0.1:8000. The first PDF downloads Docling/OCR models; allow in
 .\.venv\Scripts\python.exe scripts/validate_dataset.py
 ```
 
+On macOS/Linux, use `.venv/bin/python` in place of `.\.venv\Scripts\python.exe`.
+
+Files under `data/` are checked out with LF line endings on every OS (see `.gitattributes`) so the manifest checksums match. If an older Windows checkout fails validation, delete the `data` folder and run `git checkout -- data` once.
+
 API tests use an isolated temporary store. The PDF adapter test checks API provenance plumbing, not OCR quality. Real PDF/OCR smoke checks should also run before relying on the local installation.
 
 ## Scope and provenance
@@ -38,6 +46,7 @@ API tests use an isolated temporary store. The PDF adapter test checks API prove
 This is a local, single-user, single-patient demo, bound to loopback. Phase 2 prepares source documents; clinical extraction, longitudinal linking and chat are later phases. Reference labels remain unreviewed. Offsets index Python Unicode characters into each document's canonical `text`, with an exclusive end. For PDFs, item offsets index canonical text; Docling provenance charspans index individual items and are retained separately. Bounding boxes retain Docling's coordinate origin.
 
 Do not use held-out patients to tune prompts or choose models. Uploaded data and model caches are local and excluded from Git. Uploading to this workspace does not send report text to a hosted language model.
+
 
 Official converter/provenance reference: https://docling-project.github.io/docling/reference/document_converter/
 
