@@ -47,6 +47,15 @@ This is a local, single-user, single-patient demo, bound to loopback. Phase 2 pr
 
 Do not use held-out patients to tune prompts or choose models. Uploaded data and model caches are local and excluded from Git. Uploading to this workspace does not send report text to a hosted language model.
 
+## Extraction model (Phase 3 decision)
+
+Clinical extraction uses **DeutschlandGPT** (`claude-sonnet-5`, OpenAI-compatible API at `https://api.deutschlandgpt.de/v2`). It was chosen over local Qwen 3.5 4B after the Phase 3 benchmark (`benchmark/scorecard.md`): it labels events more accurately and runs about twice as fast. Extraction therefore sends report text to DeutschlandGPT. **Use synthetic reports only** until a data processing agreement and legal review (GDPR Art. 9, §203 StGB) are in place.
+
+Put the API key in a git-ignored `.env` file in this folder (`DEUTSCHLANDGPT_API_KEY=...`) or set it as an environment variable. Never commit it. API calls use paid credits, so run the benchmark sparingly:
+
+```bash
+.venv/bin/python scripts/benchmark_extraction.py --split model_selection --backend deutschlandgpt --model claude-sonnet-5
+```
 
 Official converter/provenance reference: https://docling-project.github.io/docling/reference/document_converter/
 

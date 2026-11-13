@@ -1,0 +1,370 @@
+{
+  "model": "claude-sonnet-5",
+  "backend": "deutschlandgpt",
+  "digest": null,
+  "loaded_bytes": null,
+  "endpoint": "api.deutschlandgpt.de",
+  "split": "development",
+  "prompt_version": "v2",
+  "settings": {
+    "temperature": 0,
+    "seed": 42,
+    "think": null
+  },
+  "created_at": "2026-11-13T17:19:48",
+  "coverage": {
+    "counts": {
+      "category": {
+        "finding": 8,
+        "complication": 7,
+        "procedure": 2
+      },
+      "assertion": {
+        "present": 8,
+        "absent": 5,
+        "suspected": 2,
+        "unknown": 1,
+        "historical": 1
+      },
+      "change": {
+        "first_documented": 2,
+        "unknown": 8,
+        "progressed": 1,
+        "performed": 1,
+        "stable": 2,
+        "improved": 1,
+        "unclear": 2
+      },
+      "event_date": {
+        "none": 16,
+        "explicit": 1
+      }
+    },
+    "fewer_than_2": [
+      "assertion=historical",
+      "assertion=unknown",
+      "change=improved",
+      "change=performed",
+      "change=progressed",
+      "event_date=explicit"
+    ],
+    "not_labelled": [
+      "abbreviations",
+      "units",
+      "anatomy",
+      "cross-date comparisons"
+    ]
+  },
+  "summary": {
+    "precision": {
+      "mean": 1.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "recall": {
+      "mean": 1.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "f1": {
+      "mean": 1.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    "serious_errors": {
+      "mean": 0,
+      "min": 0,
+      "max": 0
+    },
+    "latency_s_per_report": {
+      "mean": 4.997,
+      "min": 4.997,
+      "max": 4.997
+    }
+  },
+  "runs": [
+    {
+      "run": 1,
+      "scores": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "predictions": 17,
+        "matched": 17,
+        "false_positives": 0,
+        "references": 17,
+        "field_accuracy": {
+          "category": 0.9411764705882353,
+          "assertion": 1.0,
+          "change": 1.0,
+          "event_date": 1.0
+        },
+        "evidence_supported": 1.0,
+        "schema_invalid_reports": [],
+        "serious_errors": [],
+        "concept_pairs": [
+          {
+            "reference": "Right upper-lobe pulmonary nodule",
+            "predicted": "Right upper-lobe pulmonary nodule",
+            "sentence_id": "D01:s1"
+          },
+          {
+            "reference": "Pleural effusion",
+            "predicted": "Pleural effusion",
+            "sentence_id": "D01:s2"
+          },
+          {
+            "reference": "Inflammatory origin",
+            "predicted": "Inflammatory origin of pulmonary nodule",
+            "sentence_id": "D01:s3"
+          },
+          {
+            "reference": "Right upper-lobe pulmonary nodule",
+            "predicted": "Right upper-lobe pulmonary nodule",
+            "sentence_id": "D02:s1"
+          },
+          {
+            "reference": "Right pleural effusion",
+            "predicted": "Right-sided pleural effusion",
+            "sentence_id": "D02:s2"
+          },
+          {
+            "reference": "Pulmonary embolism",
+            "predicted": "Pulmonary embolism",
+            "sentence_id": "D02:s3"
+          },
+          {
+            "reference": "Right pleural puncture",
+            "predicted": "Right-sided pleural puncture",
+            "sentence_id": "D03:s1"
+          },
+          {
+            "reference": "Cytology result",
+            "predicted": "Cytological examination result",
+            "sentence_id": "D03:s2"
+          },
+          {
+            "reference": "Post-procedure pneumothorax",
+            "predicted": "Pneumothorax after puncture",
+            "sentence_id": "D03:s3"
+          },
+          {
+            "reference": "Right upper-lobe pulmonary nodule",
+            "predicted": "Right upper-lobe pulmonary nodule",
+            "sentence_id": "D04:s1"
+          },
+          {
+            "reference": "Right pleural effusion",
+            "predicted": "Right pleural effusion",
+            "sentence_id": "D04:s2"
+          },
+          {
+            "reference": "New pulmonary nodules",
+            "predicted": "New pulmonary nodules",
+            "sentence_id": "D04:s3"
+          },
+          {
+            "reference": "Right pleural puncture",
+            "predicted": "Pleural puncture",
+            "sentence_id": "D05:s1"
+          },
+          {
+            "reference": "Left deep vein thrombosis",
+            "predicted": "Left deep vein thrombosis",
+            "sentence_id": "D05:s2"
+          },
+          {
+            "reference": "Right upper-lobe pulmonary nodule",
+            "predicted": "Right upper-lobe pulmonary nodule",
+            "sentence_id": "D06:s1"
+          },
+          {
+            "reference": "Right pleural effusion",
+            "predicted": "Right-sided pleural effusion",
+            "sentence_id": "D06:s2"
+          },
+          {
+            "reference": "Right pleural effusion",
+            "predicted": "Right-sided pleural effusion",
+            "sentence_id": "D06:s3"
+          }
+        ]
+      },
+      "latency_s": {
+        "D01": 4.41,
+        "D02": 10.06,
+        "D03": 4.08,
+        "D04": 3.53,
+        "D05": 2.91,
+        "D06": 4.99
+      },
+      "predictions": {
+        "D01": [
+          {
+            "concept": "Right upper-lobe pulmonary nodule",
+            "category": "finding",
+            "assertion": "present",
+            "change": "first_documented",
+            "event_date": null,
+            "sentence_id": "D01:s1",
+            "quote": "Im rechten Oberlappen zeigt sich ein 6 mm großer Rundherd."
+          },
+          {
+            "concept": "Pleural effusion",
+            "category": "complication",
+            "assertion": "absent",
+            "change": "unknown",
+            "event_date": null,
+            "sentence_id": "D01:s2",
+            "quote": "Keine Pleuraergüsse."
+          },
+          {
+            "concept": "Inflammatory origin of pulmonary nodule",
+            "category": "finding",
+            "assertion": "suspected",
+            "change": "unknown",
+            "event_date": null,
+            "sentence_id": "D01:s3",
+            "quote": "Ein entzündlicher Ursprung des Rundherdes ist möglich."
+          }
+        ],
+        "D02": [
+          {
+            "concept": "Right upper-lobe pulmonary nodule",
+            "category": "finding",
+            "assertion": "present",
+            "change": "progressed",
+            "event_date": null,
+            "sentence_id": "D02:s1",
+            "quote": "Der bekannte Rundherd im rechten Oberlappen ist gegenüber dem CT vom 10.01.2024 von 6 auf 9 mm größenprogredient."
+          },
+          {
+            "concept": "Right-sided pleural effusion",
+            "category": "complication",
+            "assertion": "present",
+            "change": "first_documented",
+            "event_date": null,
+            "sentence_id": "D02:s2",
+            "quote": "Neu besteht ein kleiner rechtsseitiger Pleuraerguss."
+          },
+          {
+            "concept": "Pulmonary embolism",
+            "category": "complication",
+            "assertion": "absent",
+            "change": "unknown",
+            "event_date": null,
+            "sentence_id": "D02:s3",
+            "quote": "Kein Hinweis auf eine Lungenarterienembolie."
+          }
+        ],
+        "D03": [
+          {
+            "concept": "Right-sided pleural puncture",
+            "category": "procedure",
+            "assertion": "present",
+            "change": "performed",
+            "event_date": "2024-04-08",
+            "sentence_id": "D03:s1",
+            "quote": "Am 08.04.2024 erfolgte eine rechtsseitige Pleurapunktion mit Entnahme von 300 ml Flüssigkeit."
+          },
+          {
+            "concept": "Cytological examination result",
+            "category": "finding",
+            "assertion": "unknown",
+            "change": "unknown",
+            "event_date": null,
+            "sentence_id": "D03:s2",
+            "quote": "Die zytologische Untersuchung steht noch aus."
+          },
+          {
+            "concept": "Pneumothorax after puncture",
+            "category": "complication",
+            "assertion": "absent",
+            "change": "unknown",
+            "event_date": null,
+            "sentence_id": "D03:s3",
+            "quote": "Kein Pneumothorax nach Punktion."
+          }
+        ],
+        "D04": [
+          {
+            "concept": "Right upper-lobe pulmonary nodule",
+            "category": "finding",
+            "assertion": "present",
+            "change": "stable",
+            "event_date": null,
+            "sentence_id": "D04:s1",
+            "quote": "Der Rundherd im rechten Oberlappen ist gegenüber dem 12.03.2024 mit 9 mm unverändert."
+          },
+          {
+            "concept": "Right pleural effusion",
+            "category": "complication",
+            "assertion": "present",
+            "change": "improved",
+            "event_date": null,
+            "sentence_id": "D04:s2",
+            "quote": "Der rechtsseitige Pleuraerguss ist gegenüber dem 12.03.2024 deutlich rückläufig."
+          },
+          {
+            "concept": "New pulmonary nodules",
+            "category": "finding",
+            "assertion": "absent",
+            "change": "unknown",
+            "event_date": null,
+            "sentence_id": "D04:s3",
+            "quote": "Kein Nachweis neuer Rundherde."
+          }
+        ],
+        "D05": [
+          {
+            "concept": "Pleural puncture",
+            "category": "procedure",
+            "assertion": "historical",
+            "change": "unknown",
+            "event_date": null,
+            "sentence_id": "D05:s1",
+            "quote": "Eine Pleurapunktion wurde laut Vorbericht durchgeführt; das Eingriffsdatum ist hier nicht angegeben."
+          },
+          {
+            "concept": "Left deep vein thrombosis",
+            "category": "complication",
+            "assertion": "suspected",
+            "change": "unknown",
+            "event_date": null,
+            "sentence_id": "D05:s2",
+            "quote": "Eine tiefe Beinvenenthrombose links wird vermutet; eine Duplexsonographie wird empfohlen."
+          }
+        ],
+        "D06": [
+          {
+            "concept": "Right upper-lobe pulmonary nodule",
+            "category": "finding",
+            "assertion": "present",
+            "change": "stable",
+            "event_date": null,
+            "sentence_id": "D06:s1",
+            "quote": "Der bekannte Rundherd im rechten Oberlappen ist gegenüber dem CT vom 14.05.2024 mit 9 mm stabil."
+          },
+          {
+            "concept": "Right-sided pleural effusion",
+            "category": "complication",
+            "assertion": "present",
+            "change": "unclear",
+            "event_date": null,
+            "sentence_id": "D06:s2",
+            "quote": "Im Befund wird ein kleiner rechtsseitiger Pleuraerguss beschrieben."
+          },
+          {
+            "concept": "Right-sided pleural effusion",
+            "category": "complication",
+            "assertion": "absent",
+            "change": "unclear",
+            "event_date": null,
+            "sentence_id": "D06:s3",
+            "quote": "Beurteilung: Kein rechtsseitiger Pleuraerguss."
+          }
+        ]
+      }
+    }
+  ]
+}
