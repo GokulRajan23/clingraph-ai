@@ -1,6 +1,6 @@
-# ClinGraph AI · Phase 2
+# ClinGraph AI · Phase 4
 
-Local single-patient document ingestion workspace. The development reference studio is preserved at `/reference.html`.
+Local single-patient document workspace with clinical event extraction. The development reference studio is preserved at `/reference.html`.
 
 ## Run
 
@@ -43,9 +43,9 @@ API tests use an isolated temporary store. The PDF adapter test checks API prove
 
 ## Scope and provenance
 
-This is a local, single-user, single-patient demo, bound to loopback. Phase 2 prepares source documents; clinical extraction, longitudinal linking and chat are later phases. Reference labels remain unreviewed. Offsets index Python Unicode characters into each document's canonical `text`, with an exclusive end. For PDFs, item offsets index canonical text; Docling provenance charspans index individual items and are retained separately. Bounding boxes retain Docling's coordinate origin.
+This is a local, single-user, single-patient demo, bound to loopback. Phase 2 prepares source documents and Phase 4 extracts events per report; longitudinal linking, timeline and chat are later phases. Reference labels remain unreviewed. Offsets index Python Unicode characters into each document's canonical `text`, with an exclusive end. For PDFs, item offsets index canonical text; Docling provenance charspans index individual items and are retained separately. Bounding boxes retain Docling's coordinate origin.
 
-Do not use held-out patients to tune prompts or choose models. Uploaded data and model caches are local and excluded from Git. Uploading to this workspace does not send report text to a hosted language model.
+Do not use held-out patients to tune prompts or choose models. Uploaded data and model caches are local and excluded from Git. Uploading does not send report text anywhere. Only the **Extract events** button does: it sends that one report's text to DeutschlandGPT.
 
 ## Extraction model (Phase 3 decision)
 
@@ -57,10 +57,31 @@ Put the API key in a git-ignored `.env` file in this folder (`DEUTSCHLANDGPT_API
 .venv/bin/python scripts/benchmark_extraction.py --split model_selection --backend deutschlandgpt --model claude-sonnet-5
 ```
 
+## Clinical event extraction (Phase 4)
+
+Select a processed report and click **Extract events** (`POST /api/documents/{id}/extract`). Extraction never starts automatically, because each request sends report text to DeutschlandGPT and uses credits.
+
+- The model proposes events (concept, category, assertion, change, event date, cited segment and quote) using prompt `v2`, the prompt frozen in Phase 3. Pydantic validates them against the schema.
+- Code checks that each quote is an exact passage of the cited segment and computes character offsets and the PDF page/box itself. Proposals that fail are rejected, listed with a reason and never shown as events. Clicking an event highlights its passage.
+- An event date that is not written in the cited passage is flagged for review. Flags never change the model's output. All events are `unreviewed`.
+- Each extraction records the model, prompt version, settings, endpoint, text SHA-256, time and latency. A result for unchanged text, model and prompt is reused without an API call.
+- Failures (missing key, HTTP errors, unreachable API, invalid output, reports over 40,000 characters) are shown on the document with a retry button. Error messages and logs never contain report text. A restart marks unfinished extractions as interrupted instead of resuming them.
+- Report dates are read from the document, so date corrections apply to extracted events. "First documented" means first documented *in this report*; Phase 5 decides it across reports.
+
+Check the pipeline against labelled examples (one API call per report; 8 calls for both splits):
+
+```bash
+.venv/bin/python scripts/evaluate_pipeline.py --split development --reports D01   # smoke test
+.venv/bin/python scripts/evaluate_pipeline.py --split development
+.venv/bin/python scripts/evaluate_pipeline.py --split model_selection
+```
+
+Results (2026-11-13): F1 1.00 on both splits (17 and 4 events), no serious errors, no rejected proposals, and the same category errors as Phase 3. Details and deferred items, including the clinician-reviewed German rule layer and section handling: `benchmark/phase4_pipeline.md`.
+
 Official converter/provenance reference: https://docling-project.github.io/docling/reference/document_converter/
 
 ## Current verification
 
-Eight API tests pass, along with the Phase 1 dataset consistency checks and `pip check`. Browser interaction checks passed for text upload, report-date detection/correction and original-text display. Screenshot capture was unavailable.
+Nineteen tests pass (14 ingestion and Phase 3 scoring tests, and 5 Phase 4 extraction tests using a fake extractor, without network access), along with the Phase 1 dataset consistency checks and `pip check`. Browser interaction checks passed for text upload, report-date detection/correction and original-text display. Phase 4 browser checks (extract, evidence highlight, rejected proposals, date flag, 390 px width) passed with a fake extractor.
 
 Real PDF/OCR smoke verification remains outstanding: the first model download hit a native allocation failure on this machine. A lower-memory retry was stopped when available system memory remained low. The converter now uses streamed model downloads, two CPU threads and an isolated child process. After freeing memory, run `.\.venv\Scripts\python.exe scripts/smoke_pdf.py` to test a digital PDF and an image-only PDF. Do not treat the API adapter tests as proof of successful OCR.

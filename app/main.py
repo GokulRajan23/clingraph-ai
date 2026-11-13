@@ -1,12 +1,14 @@
 from __future__ import annotations
-import hashlib, json, logging, os, re, sqlite3, threading, uuid, subprocess, sys, tempfile
+import hashlib, json, logging, os, re, sqlite3, threading, time, uuid, subprocess, sys, tempfile, urllib.error
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, ValidationError
+from app.extraction.prompt import PROMPT_VERSION, SETTINGS
+from app.extraction.service import MAX_CHARS, report_input, verify
 
 # Stream model downloads over HTTP to reduce peak download memory on laptops.
 os.environ.setdefault('HF_HUB_DISABLE_XET','1')
@@ -76,6 +78,49 @@ def extract_pdf_in_process(path):
   parts.append(text);offset+=len(text)+1
  return '\n'.join(parts),segments,'Docling + automatic OCR'
 
+def text_segments(text):
+ # One segment per non-empty line; shared with scripts/evaluate_pipeline.py.
+ segments=[];offset=0
+ for line in text.splitlines(keepends=True):
+  value=line.rstrip('\r\n')
+  if value.strip():segments.append({'id':f's{len(segments)+1}','start':offset,'end':offset+len(value),'text':value,'provenance':[]})
+  offset+=len(line)
+ return segments
+
+def make_extractor():
+ # Replaced in tests; raises RuntimeError when no API key is configured.
+ from app.extraction.deutschlandgpt import DeutschlandGPTExtractor
+ return DeutschlandGPTExtractor()
+
+def extraction_error(exc):
+ # User-facing and logged messages never include report text.
+ if isinstance(exc,urllib.error.HTTPError):
+  hint='Check the API key.' if exc.code in (401,403) else 'Check credits or rate limits, then retry.' if exc.code in (402,429) else 'Retry later.'
+  return f'DeutschlandGPT rejected the request (HTTP {exc.code}). {hint}'
+ if isinstance(exc,(urllib.error.URLError,TimeoutError,OSError)):return 'DeutschlandGPT could not be reached. Check the internet connection, then retry.'
+ if isinstance(exc,(ValidationError,ValueError,KeyError,IndexError)):return 'DeutschlandGPT returned output that does not match the event schema. Retry; the document is unchanged.'
+ return 'Extraction failed unexpectedly. Retry; the document is unchanged.'
+
+def extract(id,extractor):
+ with LOCK:d=get(id);d['extraction']['status']='running';save(d)
+ started=time.perf_counter()
+ try:
+  if len(d['text'])>MAX_CHARS:result=dict(status='failed',error=f'This report has {len(d["text"]):,} characters; extraction supports up to {MAX_CHARS:,} in one request. Nothing was sent.')
+  else:
+   events,rejected=verify(d,extractor.extract(report_input(d)))
+   result=dict(status='ready',events=events,rejected=rejected,error=None)
+ except Exception as exc:
+  logger.error('Extraction failed for %s: %s',id,type(exc).__name__)
+  result=dict(status='failed',error=extraction_error(exc))
+ with LOCK:
+  d=get(id);d['extraction'].update(result,latency_s=round(time.perf_counter()-started,2),finished_at=now());save(d)
+
+def interrupt_extractions():
+ # Do not resume automatically: each request sends report text to DeutschlandGPT and uses credits.
+ for d in documents():
+  x=d.get('extraction')
+  if x and x['status'] in ['queued','running']:x.update(status='failed',error='Interrupted by a restart. Retry to extract again.');save(d)
+
 def process(id):
  d=get(id);d.update(status='processing',error=None);save(d)
  try:
@@ -85,12 +130,7 @@ def process(id):
    try:text=raw.decode('utf-8-sig')
    except UnicodeDecodeError:raise ValueError('Text must use UTF-8 encoding. Save it as UTF-8 and upload again.')
    if '\x00' in text:raise ValueError('This file contains binary data rather than readable text.')
-   segments=[];offset=0
-   for line in text.splitlines(keepends=True):
-    value=line.rstrip('\r\n')
-    if value.strip():segments.append({'id':f's{len(segments)+1}','start':offset,'end':offset+len(value),'text':value,'provenance':[]})
-    offset+=len(line)
-   engine='UTF-8 text'
+   segments=text_segments(text);engine='UTF-8 text'
   else:text,segments,engine=extract_pdf(path)
   if not text.strip():raise ValueError('No readable text found. Check scan quality, encryption or OCR support.')
   with LOCK:
@@ -107,7 +147,7 @@ def process(id):
 
 @asynccontextmanager
 async def lifespan(app):
- init()
+ init();interrupt_extractions()
  for d in documents():
   if d['status'] in ['queued','processing']:POOL.submit(process,d['id'])
  yield
@@ -158,3 +198,19 @@ def retry(id:str):
   if d['status']!='failed':raise HTTPException(409,'Only failed documents can be retried.')
   d.update(status='queued',error=None);save(d)
  POOL.submit(process,id);return d
+@app.post('/api/documents/{id}/extract')
+def start_extraction(id:str):
+ with LOCK:
+  d=get(id)
+  if d['status']!='ready':raise HTTPException(409,'Only processed documents can be extracted.')
+  x=d.get('extraction') or {}
+  if x.get('status') in ['queued','running']:raise HTTPException(409,'Extraction is already in progress.')
+  try:extractor=make_extractor()
+  except RuntimeError:raise HTTPException(503,'DeutschlandGPT is not configured. Set DEUTSCHLANDGPT_API_KEY in .env or the environment, then restart.')
+  key=dict(text_sha256=hashlib.sha256(d['text'].encode()).hexdigest(),model=extractor.model,prompt_version=PROMPT_VERSION)
+  # Cached result for unchanged text, model and prompt: no new API call.
+  if x.get('status')=='ready' and all(x.get(k)==v for k,v in key.items()):return d
+  d['extraction']=dict(key,status='queued',settings=SETTINGS,endpoint=extractor.info()['endpoint'],created_at=now(),finished_at=None,latency_s=None,events=[],rejected=[],error=None)
+  save(d)
+ POOL.submit(extract,id,extractor)
+ return JSONResponse(d,status_code=202)

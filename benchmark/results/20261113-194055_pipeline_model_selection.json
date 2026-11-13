@@ -1,0 +1,181 @@
+{
+  "pipeline": "phase4",
+  "model": "claude-sonnet-5",
+  "backend": "deutschlandgpt",
+  "digest": null,
+  "loaded_bytes": null,
+  "endpoint": "api.deutschlandgpt.de",
+  "split": "model_selection",
+  "prompt_version": "v2",
+  "settings": {
+    "temperature": 0,
+    "seed": 42
+  },
+  "created_at": "2026-11-13T19:40:55",
+  "coverage": {
+    "counts": {
+      "category": {
+        "complication": 2,
+        "device": 1,
+        "finding": 1
+      },
+      "assertion": {
+        "present": 3,
+        "absent": 1
+      },
+      "change": {
+        "first_documented": 1,
+        "unknown": 2,
+        "improved": 1
+      },
+      "event_date": {
+        "none": 4
+      }
+    },
+    "fewer_than_2": [
+      "assertion=absent",
+      "category=device",
+      "category=finding",
+      "change=first_documented",
+      "change=improved"
+    ],
+    "not_labelled": [
+      "abbreviations",
+      "units",
+      "anatomy",
+      "cross-date comparisons"
+    ]
+  },
+  "summary": {
+    "reports": 2,
+    "references": 4,
+    "accepted_events": 4,
+    "rejected_proposals": 0,
+    "flagged_events": 0,
+    "flagged_with_wrong_date": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "field_accuracy": {
+      "category": 0.5,
+      "assertion": 1.0,
+      "change": 1.0,
+      "event_date": 1.0
+    },
+    "evidence_supported": 1.0,
+    "serious_errors": [],
+    "schema_invalid_reports": []
+  },
+  "concept_pairs": [
+    {
+      "reference": "Left hydronephrosis",
+      "predicted": "Left hydronephrosis grade II",
+      "sentence_id": "M01:s1"
+    },
+    {
+      "reference": "Left double-J stent",
+      "predicted": "Left double-J stent",
+      "sentence_id": "M01:s2"
+    },
+    {
+      "reference": "Left hydronephrosis",
+      "predicted": "Left hydronephrosis",
+      "sentence_id": "M02:s1"
+    },
+    {
+      "reference": "Right urinary obstruction",
+      "predicted": "Right hydronephrosis",
+      "sentence_id": "M02:s2"
+    }
+  ],
+  "reports": [
+    {
+      "report_id": "M01",
+      "latency_s": 5.8,
+      "events": [
+        {
+          "id": "M01:e1",
+          "report_id": "M01",
+          "concept": "Left hydronephrosis grade II",
+          "category": "finding",
+          "assertion": "present",
+          "change": "first_documented",
+          "event_date": null,
+          "evidence": {
+            "segment_id": "s2",
+            "quote": "Links besteht eine Hydronephrose Grad II.",
+            "start": 26,
+            "end": 67,
+            "provenance": []
+          },
+          "review_status": "unreviewed",
+          "flags": []
+        },
+        {
+          "id": "M01:e2",
+          "report_id": "M01",
+          "concept": "Left double-J stent",
+          "category": "device",
+          "assertion": "present",
+          "change": "unknown",
+          "event_date": null,
+          "evidence": {
+            "segment_id": "s3",
+            "quote": "Die Doppel-J-Schiene links liegt in situ; das Einlagedatum ist nicht dokumentiert.",
+            "start": 68,
+            "end": 150,
+            "provenance": []
+          },
+          "review_status": "unreviewed",
+          "flags": []
+        }
+      ],
+      "rejected": [],
+      "flagged": []
+    },
+    {
+      "report_id": "M02",
+      "latency_s": 4.67,
+      "events": [
+        {
+          "id": "M02:e1",
+          "report_id": "M02",
+          "concept": "Left hydronephrosis",
+          "category": "finding",
+          "assertion": "present",
+          "change": "improved",
+          "event_date": null,
+          "evidence": {
+            "segment_id": "s2",
+            "quote": "Die linksseitige Hydronephrose ist gegenüber dem 01.02.2024 auf Grad I rückläufig.",
+            "start": 26,
+            "end": 108,
+            "provenance": []
+          },
+          "review_status": "unreviewed",
+          "flags": []
+        },
+        {
+          "id": "M02:e2",
+          "report_id": "M02",
+          "concept": "Right hydronephrosis",
+          "category": "finding",
+          "assertion": "absent",
+          "change": "unknown",
+          "event_date": null,
+          "evidence": {
+            "segment_id": "s3",
+            "quote": "Rechts kein Harnstau.",
+            "start": 109,
+            "end": 130,
+            "provenance": []
+          },
+          "review_status": "unreviewed",
+          "flags": []
+        }
+      ],
+      "rejected": [],
+      "flagged": []
+    }
+  ]
+}
