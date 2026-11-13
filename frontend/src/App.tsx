@@ -1,217 +1,177 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { errorText, extractEvents, getFindings, listDocuments, postCorrection, retryProcessing, saveReportDate } from './api'
-import { DocumentDetails } from './components/DocumentDetails'
-import { DocumentView } from './components/DocumentView'
-import { ObservationPanel } from './components/ObservationPanel'
-import { Sidebar } from './components/Sidebar'
-import { Timeline } from './components/Timeline'
-import { conceptSuggestions, DEFAULT_FILTERS, observationIndex, type Filters } from './lib/timeline'
-import type { CorrectionRequest, Doc, FindingsPayload, Observation } from './types'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { ask, fetchGraph, fetchSuggestions, processReports } from './api'
+import type { Answer } from './chat/script'
+import { ChatPanel } from './components/ChatPanel'
+import { GraphPanel } from './components/GraphPanel'
+import { ReportsPanel } from './components/ReportsPanel'
+import type { Graph } from './graph/types'
 
-const EMPTY: FindingsPayload = { findings: [], links: [], unresolved: [], rejected: [], corrections: [] }
-export type View = 'documents' | 'timeline'
-export type Tab = 'text' | 'original'
-
-/** Shared by the timeline and the document view: what a correction control needs. */
-export interface ReviewContext {
-  corrections: FindingsPayload['corrections']
-  suggestions: string[]
-  onCorrect: (request: CorrectionRequest) => Promise<boolean>
+export interface Upload {
+  id: string
+  file: File
+  status: 'processing' | 'processed'
 }
 
+/** What the graph is highlighting: a clicked node's neighbourhood, or the nodes a chat answer is about. */
+export type Focus = { kind: 'node'; id: string } | { kind: 'answer'; messageId: string; ids: string[] } | null
+
+export interface AnswerMessage {
+  id: string
+  role: 'assistant'
+  answer: Answer
+}
+export type Message = { id: string; role: 'user'; text: string } | AnswerMessage
+
+/** `id` changes on every notice, so a repeated message restarts its timer and is re-announced. */
+export interface Notice {
+  id: string
+  text: string
+}
+
+let sequence = 0
+const nextId = (prefix: string) => `${prefix}-${++sequence}`
+
+const isPdf = (file: File) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
+const sameFile = (a: File, b: File) => a.name === b.name && a.size === b.size && a.lastModified === b.lastModified
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
 export default function App() {
-  const [docs, setDocs] = useState<Doc[]>([])
-  const [linked, setLinked] = useState<FindingsPayload>(EMPTY)
-  const [offline, setOffline] = useState(false)
-  const [view, setViewState] = useState<View>(() => (window.location.hash === '#timeline' ? 'timeline' : 'documents'))
-  const [selectedDoc, setSelectedDoc] = useState<string | null>(null)
-  const [tab, setTab] = useState<Tab>('text')
-  const [activeSegment, setActiveSegment] = useState<string | null>(null)
-  const [activeEvent, setActiveEvent] = useState<string | null>(null)
-  const [selectedObservation, setSelectedObservation] = useState<string | null>(null)
-  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
-  const [toast, setToast] = useState<string | null>(null)
-  const signature = useRef('')
+  const [uploads, setUploads] = useState<Upload[]>([])
+  const [notice, setNotice] = useState<Notice | null>(null)
+  const [loaded, setLoaded] = useState<{ key: string; graph: Graph } | null>(null)
+  const [focus, setFocus] = useState<Focus>(null)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [pending, setPending] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  // Bumped when the chat is reset, so an answer still in flight is dropped.
+  const conversation = useRef(0)
 
-  // Poll both endpoints; state only changes when a payload does, so inputs being edited are not reset.
-  const refresh = useCallback(async () => {
-    try {
-      const [nextDocs, nextLinked] = await Promise.all([listDocuments(), getFindings()])
-      setOffline(false)
-      const next = JSON.stringify([nextDocs, nextLinked])
-      if (next === signature.current) return
-      signature.current = next
-      setDocs(nextDocs)
-      setLinked(nextLinked)
-      setSelectedDoc((current) => current ?? nextDocs[0]?.id ?? null)
-    } catch {
-      setOffline(true)
+  // The graph covers the processed reports, named in upload order.
+  const processed = uploads.filter((u) => u.status === 'processed').map((u) => u.file.name)
+  const graphKey = processed.length > 0 ? JSON.stringify(processed) : ''
+  const graph = graphKey ? (loaded?.graph ?? null) : null
+  const busy = uploads.some((u) => u.status === 'processing') || (graphKey !== '' && loaded?.key !== graphKey)
+
+  useEffect(() => {
+    if (!graphKey) return
+    let live = true
+    void fetchGraph(JSON.parse(graphKey) as string[]).then((next) => {
+      if (live) setLoaded({ key: graphKey, graph: next })
+    })
+    return () => {
+      live = false
     }
-  }, [])
+  }, [graphKey])
 
   useEffect(() => {
-    void refresh()
-    const timer = window.setInterval(() => void refresh(), 2000)
-    return () => window.clearInterval(timer)
-  }, [refresh])
+    if (!graph) return
+    let live = true
+    void fetchSuggestions().then((next) => {
+      if (live) setSuggestions(next)
+    })
+    return () => {
+      live = false
+    }
+  }, [graph])
+
+  // With every report removed, start over: no graph from the previous session may reappear.
+  useEffect(() => {
+    if (uploads.length === 0) setLoaded(null)
+  }, [uploads.length])
 
   useEffect(() => {
-    if (!toast) return
-    const timer = window.setTimeout(() => setToast(null), 4500)
+    if (!notice) return
+    const timer = window.setTimeout(() => setNotice(null), 5000)
     return () => window.clearTimeout(timer)
-  }, [toast])
+  }, [notice])
 
-  const observations = useMemo(() => observationIndex(linked), [linked])
-  const byEvent = useMemo(() => {
-    const index = new Map<string, Observation>()
-    for (const o of observations.values()) index.set(o.event_id, o)
-    return index
-  }, [observations])
-  const suggestions = useMemo(() => conceptSuggestions(linked), [linked])
-  const doc = docs.find((d) => d.id === selectedDoc) ?? null
+  const addFiles = (files: File[]) => {
+    if (files.length === 0) return
+    const pdfs = files.filter(isPdf)
+    const fresh = pdfs.filter((file, i) => !uploads.some((u) => sameFile(u.file, file)) && pdfs.findIndex((f) => sameFile(f, file)) === i)
+    const skipped = [
+      files.length > pdfs.length && `skipped ${plural(files.length - pdfs.length, 'file')} that ${files.length - pdfs.length === 1 ? 'is' : 'are'} not PDF`,
+      pdfs.length > fresh.length && `${plural(pdfs.length - fresh.length, 'report')} already uploaded`,
+    ].filter(Boolean)
+    setNotice(skipped.length ? { id: nextId('notice'), text: `Only new PDF reports are added: ${skipped.join(', ')}.` } : null)
+    if (fresh.length === 0) return
 
-  const setView = (next: View) => {
-    setViewState(next)
-    window.history.replaceState(null, '', next === 'timeline' ? '#timeline' : window.location.pathname)
+    const batch: Upload[] = fresh.map((file) => ({ id: nextId('report'), file, status: 'processing' }))
+    const ids = new Set(batch.map((u) => u.id))
+    setUploads((current) => [...current, ...batch])
+    void processReports(fresh).then(() => {
+      setUploads((current) => current.map((u) => (ids.has(u.id) ? { ...u, status: 'processed' } : u)))
+    })
   }
 
-  const chooseDocument = (id: string) => {
-    setSelectedDoc(id)
-    setActiveSegment(null)
-    setActiveEvent(null)
+  // Removing a report rebuilds the graph and renames report nodes, so earlier answers would cite
+  // the wrong files: the conversation starts over.
+  const removeUpload = (id: string) => {
+    setUploads((current) => current.filter((u) => u.id !== id))
+    conversation.current += 1
+    setMessages([])
+    setPending(false)
+    setFocus(null)
   }
 
-  /** Open an event's source passage in the document view (text tab) or its original page. */
-  const showEvent = (reportId: string, eventId: string, nextTab: Tab = 'text') => {
-    const event = docs.find((d) => d.id === reportId)?.extraction?.events.find((e) => e.id === eventId)
-    setView('documents')
-    setSelectedDoc(reportId)
-    setActiveEvent(eventId)
-    setActiveSegment(event?.evidence.segment_id ?? null)
-    setTab(nextTab)
+  const askQuestion = async (question: string) => {
+    const turn = conversation.current
+    setMessages((current) => [...current, { id: nextId('question'), role: 'user', text: question }])
+    setPending(true)
+    const answer = await ask(question)
+    if (turn !== conversation.current) return
+    const id = nextId('answer')
+    setMessages((current) => [...current, { id, role: 'assistant', answer }])
+    setPending(false)
+    if (answer.highlight.length > 0) setFocus({ kind: 'answer', messageId: id, ids: answer.highlight })
   }
 
-  const run = async (action: () => Promise<unknown>, done?: string) => {
-    try {
-      await action()
-      if (done) setToast(done)
-      await refresh()
-      return true
-    } catch (error) {
-      setToast(errorText(error))
-      await refresh()
-      return false
-    }
-  }
-
-  const review: ReviewContext = {
-    corrections: linked.corrections,
-    suggestions,
-    onCorrect: (request) => run(() => postCorrection(request), 'Correction saved to the log.'),
-  }
+  const carriesFiles = (event: DragEvent) => event.dataTransfer.types.includes('Files')
 
   return (
-    <>
+    <div
+      className="app"
+      onDragOver={(event) => {
+        if (!carriesFiles(event)) return
+        event.preventDefault()
+        setDragging(true)
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false)
+      }}
+      onDrop={(event) => {
+        if (!carriesFiles(event)) return
+        event.preventDefault()
+        setDragging(false)
+        addFiles([...event.dataTransfer.files])
+      }}
+    >
       <header>
-        <div className="brand">ClinGraph<span> / </span>document workspace</div>
-        <nav className="views" aria-label="Views">
-          <button className={view === 'documents' ? 'active' : ''} aria-pressed={view === 'documents'} onClick={() => setView('documents')}>
-            Documents
-          </button>
-          <button className={view === 'timeline' ? 'active' : ''} aria-pressed={view === 'timeline'} onClick={() => setView('timeline')}>
-            Timeline{linked.findings.length ? ` · ${linked.findings.length}` : ''}
-          </button>
-        </nav>
-        <div className="header-end">
-          <a href="/reference.html">Reference studio ↗</a>
-          <span className="tag">PHASE 06 · TIMELINE &amp; CORRECTIONS</span>
+        <div className="brand">
+          Clin<span>Graph</span> AI
         </div>
+        <p className="tagline">From medical reports to a connected patient history</p>
       </header>
-      <div className={`layout ${view}`}>
-        <Sidebar
-          docs={docs}
-          selected={selectedDoc}
-          onChoose={(id) => {
-            chooseDocument(id)
-            setView('documents')
-          }}
-          onUploaded={async (id) => {
-            chooseDocument(id)
-            await refresh()
-          }}
-          onToast={setToast}
+      <main className="workspace">
+        <ReportsPanel uploads={uploads} notice={notice} onAdd={addFiles} onRemove={removeUpload} />
+        <GraphPanel graph={graph} busy={busy} focus={focus} onFocus={setFocus} />
+        <ChatPanel
+          graph={graph}
+          reportCount={processed.length}
+          suggestions={suggestions}
+          messages={messages}
+          pending={pending}
+          focus={focus}
+          onAsk={(question) => void askQuestion(question)}
+          onFocus={setFocus}
         />
-        <main>
-          {offline && (
-            <div className="notice error" role="alert">
-              Local server unavailable. Start the workspace with start.ps1 (Windows) or start.sh (macOS/Linux).
-            </div>
-          )}
-          {view === 'documents' ? (
-            <DocumentView
-              doc={doc}
-              tab={tab}
-              onTab={setTab}
-              activeSegment={activeSegment}
-              activeEvent={activeEvent}
-              onInspect={(segmentId) => {
-                setActiveSegment(segmentId)
-                setActiveEvent(null)
-              }}
-              onSelectEvent={(event) => {
-                setActiveEvent(event.id)
-                setActiveSegment(event.evidence.segment_id)
-                setTab('text')
-              }}
-              byEvent={byEvent}
-              review={review}
-              onExtract={(id) => run(() => extractEvents(id))}
-              onRetry={(id) => run(() => retryProcessing(id))}
-              onOpenTimeline={(observationId) => {
-                setSelectedObservation(observationId)
-                setView('timeline')
-              }}
-            />
-          ) : (
-            <Timeline
-              docs={docs}
-              linked={linked}
-              filters={filters}
-              onFilters={setFilters}
-              selected={selectedObservation}
-              onSelect={setSelectedObservation}
-              onDocuments={() => setView('documents')}
-            />
-          )}
-          <p className="footer">
-            Extracted events are model proposals with verified source passages. A review status records a reviewer’s decision; neither
-            establishes clinical correctness.
-          </p>
-        </main>
-        <section className="right" aria-label={view === 'documents' ? 'Document details' : 'Selected event'}>
-          {view === 'documents' ? (
-            <DocumentDetails
-              doc={doc}
-              activeSegment={activeSegment}
-              onOriginal={() => setTab('original')}
-              onSaveDate={(id, date) => run(() => saveReportDate(id, date), 'Report date saved.')}
-            />
-          ) : (
-            <ObservationPanel
-              observation={selectedObservation ? observations.get(selectedObservation) ?? null : null}
-              selectedId={selectedObservation}
-              docs={docs}
-              linked={linked}
-              observations={observations}
-              review={review}
-              onShow={showEvent}
-            />
-          )}
-        </section>
-      </div>
-      <div id="toast" className={toast ? '' : 'hidden'} role="status" aria-live="polite">
-        {toast}
-      </div>
-    </>
+      </main>
+      {dragging && (
+        <div className="drop-hint" aria-hidden="true">
+          Drop PDF reports to add them
+        </div>
+      )}
+    </div>
   )
 }

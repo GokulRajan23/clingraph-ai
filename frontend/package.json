@@ -1,18 +1,20 @@
 {
   "name": "clingraph-frontend",
   "private": true,
-  "version": "0.6.0",
+  "version": "1.0.0",
   "type": "module",
-  "description": "ClinGraph Phase 6 interface: documents, extracted events, timeline and corrections.",
+  "description": "ClinGraph v1: upload PDF reports, explore the patient knowledge graph and ask questions about it.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "react-force-graph-2d": "^1.29.2"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
