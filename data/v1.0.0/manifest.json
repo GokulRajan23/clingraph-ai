@@ -1,0 +1,34 @@
+{
+  "version": "1.0.0",
+  "synthetic": true,
+  "clinical_review": "Pending \u2014 hand-authored technical references",
+  "split_unit": "patient",
+  "splits": {
+    "development": [
+      "SYN-001"
+    ],
+    "model_selection": [
+      "SYN-002"
+    ],
+    "final_evaluation": [
+      "SYN-003"
+    ]
+  },
+  "counts": {
+    "reports": 10,
+    "events": 25,
+    "questions": 20
+  },
+  "limitations": [
+    "No clinical validation",
+    "Complication category is a demo grouping, not an inferred causal relationship",
+    "Final evaluation fixtures must remain outside prompt tuning and model selection; replace after exposure"
+  ],
+  "sha256": {
+    "event.schema.json": "1bd934dcfb6c1a359bf939fb2dcf9c793fd89418e64a023bdedb012e9870f952",
+    "events.json": "9a86021fa288bd5d8a378996efc723efec869b8a9a4af193301cc3e0eef1a963",
+    "links.json": "9af473d95241063ca7b53c0fb3a579c5e435fda02be732650a20313b29450ffc",
+    "questions.json": "65ca986d515f2888efea0753fc1ad21086ca9b28b1839abc68025e59b00bde13",
+    "reports.json": "8940a9a4b6b6734e80c786f254ed1de4be666576a0f8bd83cc4797581fcef854"
+  }
+}
