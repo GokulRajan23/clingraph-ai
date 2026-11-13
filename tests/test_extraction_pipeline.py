@@ -107,4 +107,5 @@ def test_running_extraction_conflicts_and_restart_interrupts(client,monkeypatch)
   main.interrupt_extractions()
   x=client.get('/api/documents/'+d['id']).json()['extraction'];assert x['status']=='failed' and 'restart' in x['error']
  finally:release.set()
- assert extracted(client,d['id'])['extraction']['status']=='ready'
+ # The interrupted status is already "failed", so wait for the released run to record its result.
+ wait(client,d['id'],lambda d:d['extraction']['status']=='ready')

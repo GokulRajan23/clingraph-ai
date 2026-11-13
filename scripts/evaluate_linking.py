@@ -29,8 +29,9 @@ def reference_observations(reports, references):
     return pairs
 
 
-def pipeline_observations(split, reports, references):
-    runs = sorted((ROOT / "benchmark" / "results").glob(f"*_pipeline_{split}.json"))
+def pipeline_observations(split, reports, references, run=None):
+    """Observations from a saved Phase 4 run (default: the latest for the split), paired with reference ids."""
+    runs = [run] if run else sorted((ROOT / "benchmark" / "results").glob(f"*_pipeline_{split}.json"))
     if not runs:
         raise SystemExit(f"No saved Phase 4 run for {split}. Run scripts/evaluate_pipeline.py --split {split} first.")
     saved = json.loads(runs[-1].read_text(encoding="utf-8"))

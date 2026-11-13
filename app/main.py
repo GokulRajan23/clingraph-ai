@@ -4,16 +4,21 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import Annotated, Literal
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel, ValidationError
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, ConfigDict, StringConstraints, ValidationError
+from app.corrections import applied_ids, apply as apply_corrections, mark_stale, review
+from app.extraction.models import Assertion, Category, Change
 from app.extraction.prompt import PROMPT_VERSION, SETTINGS
 from app.extraction.service import MAX_CHARS, report_input, verify
-from app.linking import build, observation
+from app.linking import assign_ids, build, observation
 
 # Stream model downloads over HTTP to reduce peak download memory on laptops.
 os.environ.setdefault('HF_HUB_DISABLE_XET','1')
 ROOT=Path(__file__).resolve().parents[1]
+FRONTEND=ROOT/'frontend'/'dist'
 STORE=Path(os.environ.get('CLINGRAPH_DATA_DIR',ROOT/'runtime'))
 STORE.mkdir(parents=True,exist_ok=True)
 POOL=ThreadPoolExecutor(max_workers=1)
@@ -30,6 +35,10 @@ def init():
   c.execute("CREATE TABLE IF NOT EXISTS observations (id TEXT PRIMARY KEY, finding_id TEXT, report_id TEXT, report_date TEXT, payload TEXT NOT NULL)")
   c.execute("CREATE TABLE IF NOT EXISTS findings (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
   c.execute("CREATE TABLE IF NOT EXISTS links (id TEXT PRIMARY KEY, from_observation TEXT, to_observation TEXT, relationship TEXT, review_required INTEGER, payload TEXT NOT NULL)")
+  # Phase 6 corrections are source data, not derived: an append-only log (INSERT only) that rebuilds never touch.
+  c.execute("CREATE TABLE IF NOT EXISTS corrections (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, observation_id TEXT NOT NULL, payload TEXT NOT NULL)")
+def correction_log():
+ with connect() as c:return [{**json.loads(x['payload']),'seq':x['seq']} for x in c.execute('SELECT seq,payload FROM corrections ORDER BY seq')]
 def save(d):
  with connect() as c:c.execute('INSERT OR REPLACE INTO documents VALUES(?,?,?)',(d['id'],d['digest'],json.dumps(d,ensure_ascii=False)))
 def documents():
@@ -119,19 +128,23 @@ def extract(id,extractor):
   result=dict(status='failed',error=extraction_error(exc))
  with LOCK:
   d=get(id);d['extraction'].update(result,latency_s=round(time.perf_counter()-started,2),finished_at=now());save(d)
-  if result['status']=='ready':rebuild_links()
+  rebuild_links()
 
 def rebuild_links():
  # One workspace holds one patient; observations get the same patient id.
+ # Corrections are applied before linking; rejected observations are stored without a finding and never linked.
  with LOCK:
   ready=[d for d in documents() if d['status']=='ready' and (d.get('extraction') or {}).get('status')=='ready']
-  result=build([observation(d,e) for d in ready for e in d['extraction']['events']])
+  active,rejected,_=apply_corrections(assign_ids([observation(d,e) for d in ready for e in d['extraction']['events']]),correction_log())
+  result=build(active)
   finding_of={o:f['id'] for f in result['findings'] for o in f['observations']}
   unresolved={}
   for u in result['unresolved']:unresolved.setdefault(u['observation'],[]).append(u)
+  rows=[(o['id'],finding_of[o['id']],o['report_id'],o['report_date'],json.dumps({**o,'finding_id':finding_of[o['id']],'unresolved':unresolved.get(o['id'],[])},ensure_ascii=False)) for o in result['observations']]
+  rows+=[(o['id'],None,o['report_id'],o['report_date'],json.dumps({**o,'finding_id':None,'unresolved':[]},ensure_ascii=False)) for o in rejected]
   with connect() as c:
    for table in ['observations','findings','links']:c.execute(f'DELETE FROM {table}')
-   c.executemany('INSERT INTO observations VALUES(?,?,?,?,?)',[(o['id'],finding_of[o['id']],o['report_id'],o['report_date'],json.dumps({**o,'unresolved':unresolved.get(o['id'],[])},ensure_ascii=False)) for o in result['observations']])
+   c.executemany('INSERT INTO observations VALUES(?,?,?,?,?)',rows)
    c.executemany('INSERT INTO findings VALUES(?,?)',[(f['id'],json.dumps(f,ensure_ascii=False)) for f in result['findings']])
    c.executemany('INSERT OR REPLACE INTO links VALUES(?,?,?,?,?,?)',[(x['id'],x['from_observation'],x['to_observation'],x['relationship'],int(x['review_required']),json.dumps(x,ensure_ascii=False)) for x in result['links']])
 
@@ -174,8 +187,12 @@ async def lifespan(app):
  POOL.shutdown(wait=True)
 app=FastAPI(title='ClinGraph document workspace',lifespan=lifespan)
 init()
+NOT_BUILT='<!doctype html><meta charset="utf-8"><title>ClinGraph</title><p style="font:15px/1.6 sans-serif;margin:40px">The interface has not been built. Run <code>./start.sh</code> or <code>.\\start.ps1</code> (Node.js 20+ required), or: <code>cd frontend &amp;&amp; npm ci &amp;&amp; npm run build</code>, then reload.</p>'
 @app.get('/')
-def home():return FileResponse(ROOT/'index.html')
+def home():
+ # The React interface is built into frontend/dist by the start scripts.
+ index=FRONTEND/'index.html'
+ return FileResponse(index) if index.exists() else HTMLResponse(NOT_BUILT,status_code=503)
 @app.get('/reference.html')
 def reference():return FileResponse(ROOT/'reference.html')
 @app.get('/api/documents')
@@ -233,15 +250,64 @@ def start_extraction(id:str):
   if x.get('status')=='ready' and all(x.get(k)==v for k,v in key.items()):return d
   d['extraction']=dict(key,status='queued',settings=SETTINGS,endpoint=extractor.info()['endpoint'],created_at=now(),finished_at=None,latency_s=None,events=[],rejected=[],error=None)
   save(d)
+  # Derived tables follow the current extraction, so the previous events leave the timeline while it runs.
+  rebuild_links()
  POOL.submit(extract,id,extractor)
  return JSONResponse(d,status_code=202)
+def current_observations():
+ with connect() as c:return {x['id']:json.loads(x['payload']) for x in c.execute('SELECT id,payload FROM observations')}
 @app.get('/api/findings')
 def findings():
  # Observations in date order (undated last); links and unresolved comparisons keep their evidence.
- with connect() as c:
-  observations={x['id']:json.loads(x['payload']) for x in c.execute('SELECT id,payload FROM observations')}
-  result=[json.loads(x['payload']) for x in c.execute('SELECT payload FROM findings')]
-  links=[json.loads(x['payload']) for x in c.execute('SELECT payload FROM links')]
+ # Read under the lock so the corrections log and the derived tables come from the same rebuild.
+ with LOCK:
+  observations=current_observations()
+  with connect() as c:
+   result=[json.loads(x['payload']) for x in c.execute('SELECT payload FROM findings')]
+   links=[json.loads(x['payload']) for x in c.execute('SELECT payload FROM links')]
+  log=mark_stale(correction_log(),applied_ids(observations.values()))
  for f in result:f['observations']=[observations[o] for o in f['observations']]
  result.sort(key=lambda f:(f['first_documented'] is None,f['first_documented'] or '',f['concept']))
- return {'findings':result,'links':links,'unresolved':[u for o in observations.values() for u in o['unresolved']]}
+ rejected=sorted((o for o in observations.values() if o['finding_id'] is None),key=lambda o:(o['report_date'] is None,o['report_date'] or '',o['report_id'],o['start']))
+ # Stable order: table order changes when a document is saved again.
+ return {'findings':result,'links':sorted(links,key=lambda x:x['id']),'unresolved':sorted((u for o in observations.values() for u in o['unresolved']),key=lambda u:(u['observation'],u['comparison_date'])),'rejected':rejected,'corrections':log}
+Concept=Annotated[str,StringConstraints(strip_whitespace=True,min_length=1,max_length=200)]
+class EventChanges(BaseModel):
+ # Omitted fields stay unchanged. Only event_date may be set to null (date not stated).
+ model_config=ConfigDict(extra='forbid')
+ concept:Concept=None
+ category:Category=None
+ assertion:Assertion=None
+ change:Change=None
+ event_date:date|None=None
+class CorrectionRequest(BaseModel):
+ model_config=ConfigDict(extra='forbid')
+ observation_id:str
+ action:Literal['confirm','reject','restore','edit']
+ changes:EventChanges|None=None
+ note:Annotated[str,StringConstraints(strip_whitespace=True,max_length=500)]|None=None
+# Allowed review transitions; anything else would be a no-op or needs a restore first.
+TRANSITIONS={'confirm':({'unreviewed'},'Only unreviewed events can be confirmed.'),'reject':({'unreviewed','confirmed','corrected'},'This event is already rejected.'),'restore':({'rejected','confirmed'},'Only rejected or confirmed events can be restored.'),'edit':({'unreviewed','confirmed','corrected'},'Restore the event before editing it.')}
+@app.post('/api/corrections',status_code=201)
+def correct(body:CorrectionRequest):
+ changes=body.changes.model_dump(mode='json',exclude_unset=True) if body.changes else {}
+ if body.action!='edit' and body.changes is not None:raise HTTPException(400,'Only edits can change event fields.')
+ if body.action=='edit' and not changes:raise HTTPException(400,'An edit needs at least one field to change.')
+ with LOCK:
+  o=current_observations().get(body.observation_id)
+  if not o:raise HTTPException(404,'Event not found. It may have been re-extracted; reload the timeline.')
+  allowed,message=TRANSITIONS[body.action]
+  if o['review_status'] not in allowed:raise HTTPException(409,message)
+  changes={k:v for k,v in changes.items() if v!=o[k]}
+  if body.action=='edit' and not changes:raise HTTPException(409,'No change: the event already has these values.')
+  entry=dict(id=uuid.uuid4().hex,observation_id=o['id'],report_id=o['report_id'],event_id=o['event_id'],action=body.action,changes=changes,previous={k:o[k] for k in changes},status_before=o['review_status'],note=body.note or None,at=now(),target=dict(quote=o['quote'],filename=o['filename'],report_date=o['report_date'],concept=o['concept']))
+  earlier=[e for e in correction_log() if e['id'] in set(o['correction_ids'])]
+  entry['status_after']=review({**o,**o['original']},earlier+[entry])['review_status']
+  with connect() as c:seq=c.execute('INSERT INTO corrections(id,observation_id,payload) VALUES(?,?,?)',(entry['id'],entry['observation_id'],json.dumps(entry,ensure_ascii=False))).lastrowid
+  rebuild_links()
+  return {'correction':{**entry,'seq':seq,'stale':False},'observation':current_observations()[o['id']]}
+@app.get('/api/corrections')
+def corrections():
+ with LOCK:return {'corrections':mark_stale(correction_log(),applied_ids(current_observations().values()))}
+# Hashed build assets; check_dir=False lets the API start before the interface is built.
+app.mount('/assets',StaticFiles(directory=FRONTEND/'assets',check_dir=False),name='assets')

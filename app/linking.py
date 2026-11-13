@@ -7,6 +7,8 @@ Features come from the German evidence quote that Phase 4 verified, not from the
   Always flagged for review. Similar wording alone never confirms a link.
 Undated reports are never ordered and never the earlier end of a link. Different patients and observations
 in the same report are never linked. Measurements are recorded but never decide identity or change.
+Phase 6 corrections (app/corrections.py) are applied before linking: corrected values are linked like
+extracted ones, and rejected observations are never passed in.
 """
 import re
 
@@ -59,9 +61,9 @@ def observation(document, event, patient_id="local"):
 
 
 def build(observations):
-    """Return observations (same order; a repeated evidence span gets a #n suffix), links, unresolved
-    comparisons and findings."""
-    observations = _unique(observations)
+    """Return observations (same order, ids made unique by assign_ids), links, unresolved comparisons
+    and findings."""
+    observations = assign_ids(observations)
     links, unresolved = [], []
     for later in observations:
         made = _explicit_links(later, observations, unresolved)
@@ -72,7 +74,9 @@ def build(observations):
             "findings": _findings(observations, links)}
 
 
-def _unique(observations):
+def assign_ids(observations):
+    """Same order; a repeated evidence span gets a #n suffix. Idempotent, so ids assigned before
+    corrections are applied stay the same inside build."""
     seen, out = {}, []
     for o in observations:
         n = seen[o["id"]] = seen.get(o["id"], 0) + 1
