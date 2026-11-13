@@ -1,0 +1,30 @@
+{
+  "version": "linking-1.0.0",
+  "synthetic": true,
+  "clinical_review": "Pending — hand-authored technical references",
+  "split_unit": "patient",
+  "splits": {
+    "linking_check": [
+      "SYN-004"
+    ]
+  },
+  "provenance": "Written on 2026-11-13 after the Phase 5 rules were specified and before any linker or model run on it, by the same author as the rules. A technical check, not an independent test.",
+  "traps": {
+    "comparison_not_most_recent": "LE06 compares with L01 although L02 is more recent",
+    "study_not_uploaded": "LE07 compares with an MRT from 2023-01-10",
+    "undated_report": "L05",
+    "device_across_reports": "LE09, LE11, LE14",
+    "opposite_side_same_organ": "LE12 (left, absent) vs the right liver lesion; LE02 left cyst vs right lesion",
+    "measurement_without_comparison": "LE04 measures 15 mm without a stated comparison"
+  },
+  "counts": {
+    "reports": 5,
+    "events": 14,
+    "links": 8
+  },
+  "sha256": {
+    "reports.json": "92d19c28f9c040b9a2c319b1bfd390003a51d0d4f5d1960c71091df1d724b620",
+    "events.json": "39994d2e2df24f7a0c9d89ca8398c3b0a98e20698066041b3464805c8e478bf2",
+    "links.json": "628cb0a129f600d128d342419fbcf6568271e2d241849d7a63510ab5a78f63fb"
+  }
+}

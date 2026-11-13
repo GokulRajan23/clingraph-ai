@@ -1,0 +1,89 @@
+{
+  "split": "model_selection",
+  "source": "reference",
+  "pipeline_results": null,
+  "created_at": "2026-11-13T20:06:02",
+  "summary": {
+    "observations": 4,
+    "unmapped_observations": 0,
+    "reference_links": 1,
+    "predicted_links": 1,
+    "matched_links": 1,
+    "precision": 1.0,
+    "recall": 1.0,
+    "agreement_on_matched": {
+      "relationship": 1,
+      "review_required": 1,
+      "comparison_date": 1
+    },
+    "missed_links": [],
+    "extra_links": [],
+    "wrong_merges": [],
+    "unresolved": {
+      "expected": [],
+      "predicted": [],
+      "matched": 0
+    },
+    "chains_rebuilt": "2/2",
+    "chains_rebuilt_ids": [
+      "hydro",
+      "stent"
+    ]
+  },
+  "links": [
+    {
+      "id": "M01:0-41>M02:0-82",
+      "from_observation": "M01:0-41",
+      "to_observation": "M02:0-82",
+      "relationship": "improved",
+      "comparison_date": "2024-02-01",
+      "basis": "Explicit comparison",
+      "review_required": false,
+      "evidence": {
+        "from": "Links besteht eine Hydronephrose Grad II.",
+        "to": "Die linksseitige Hydronephrose ist gegenüber dem 01.02.2024 auf Grad I rückläufig."
+      },
+      "reference_pair": [
+        "E18",
+        "E20"
+      ],
+      "matched": true
+    }
+  ],
+  "findings": [
+    {
+      "id": "f:M01:42-124",
+      "concept": "Left double-J stent",
+      "laterality": "left",
+      "observations": [
+        "M01:42-124"
+      ],
+      "first_documented": "2024-02-01",
+      "first_documented_uncertain": false,
+      "review_required": false
+    },
+    {
+      "id": "f:M01:0-41",
+      "concept": "Left hydronephrosis",
+      "laterality": "left",
+      "observations": [
+        "M01:0-41",
+        "M02:0-82"
+      ],
+      "first_documented": "2024-02-01",
+      "first_documented_uncertain": false,
+      "review_required": false
+    },
+    {
+      "id": "f:M02:83-104",
+      "concept": "Right urinary obstruction",
+      "laterality": "right",
+      "observations": [
+        "M02:83-104"
+      ],
+      "first_documented": null,
+      "first_documented_uncertain": false,
+      "review_required": false
+    }
+  ]
+}

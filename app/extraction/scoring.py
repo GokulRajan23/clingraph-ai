@@ -6,7 +6,8 @@ from pathlib import Path
 from app.extraction.models import ExtractedEvent
 
 DATA = Path(__file__).resolve().parents[2] / "data" / "v1.0.0"
-ALLOWED_SPLITS = ("development", "model_selection")
+LINKING = DATA.parent / "linking-v1"  # Phase 5 linking patient SYN-004
+ALLOWED_SPLITS = ("development", "model_selection", "linking_check")
 FIELDS = ("category", "assertion", "change", "event_date")
 
 
@@ -14,10 +15,22 @@ def load_split(split):
     """Return (reports, reference events) for a benchmark split. The held-out split is refused."""
     if split not in ALLOWED_SPLITS:
         raise ValueError(f"Split {split!r} is not available to the benchmark.")
-    patients = set(json.loads((DATA / "manifest.json").read_text(encoding="utf-8"))["splits"][split])
-    reports = [r for r in json.loads((DATA / "reports.json").read_text(encoding="utf-8")) if r["patient_id"] in patients]
-    events = [e for e in json.loads((DATA / "events.json").read_text(encoding="utf-8")) if e["patient_id"] in patients]
+    data = LINKING if split == "linking_check" else DATA
+    patients = set(json.loads((data / "manifest.json").read_text(encoding="utf-8"))["splits"][split])
+    reports = [r for r in json.loads((data / "reports.json").read_text(encoding="utf-8")) if r["patient_id"] in patients]
+    events = [e for e in json.loads((data / "events.json").read_text(encoding="utf-8")) if e["patient_id"] in patients]
     return reports, events
+
+
+def load_links(split):
+    """Reference links (and, for linking_check, unresolved comparisons) between events of a split."""
+    _, events = load_split(split)
+    ids = {e["id"] for e in events}
+    if split == "linking_check":
+        data = json.loads((LINKING / "links.json").read_text(encoding="utf-8"))
+        return data["links"], data["unresolved_comparisons"]
+    links = json.loads((DATA / "links.json").read_text(encoding="utf-8"))
+    return [x for x in links if x["from_event"] in ids and x["to_event"] in ids], []
 
 
 def evidence_offsets(report, prediction):

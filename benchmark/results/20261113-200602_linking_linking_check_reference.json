@@ -1,0 +1,267 @@
+{
+  "split": "linking_check",
+  "source": "reference",
+  "pipeline_results": null,
+  "created_at": "2026-11-13T20:06:02",
+  "summary": {
+    "observations": 14,
+    "unmapped_observations": 0,
+    "reference_links": 8,
+    "predicted_links": 8,
+    "matched_links": 8,
+    "precision": 1.0,
+    "recall": 1.0,
+    "agreement_on_matched": {
+      "relationship": 8,
+      "review_required": 8,
+      "comparison_date": 8
+    },
+    "missed_links": [],
+    "extra_links": [],
+    "wrong_merges": [],
+    "unresolved": {
+      "expected": [
+        [
+          "LE07",
+          "2023-01-10"
+        ]
+      ],
+      "predicted": [
+        [
+          "LE07",
+          "2023-01-10"
+        ]
+      ],
+      "matched": 1
+    },
+    "chains_rebuilt": "4/4",
+    "chains_rebuilt_ids": [
+      "ascites",
+      "cyst",
+      "lesion",
+      "stent"
+    ]
+  },
+  "links": [
+    {
+      "id": "L01:0-68>L02:0-69",
+      "from_observation": "L01:0-68",
+      "to_observation": "L02:0-69",
+      "relationship": "same_finding",
+      "comparison_date": null,
+      "basis": "Same finding and side; no resolved comparison; review required",
+      "review_required": true,
+      "evidence": {
+        "from": "Im rechten Leberlappen zeigt sich eine 14 mm große hypodense Läsion.",
+        "to": "Die bekannte Läsion im rechten Leberlappen misst sonographisch 15 mm."
+      },
+      "reference_pair": [
+        "LE01",
+        "LE04"
+      ],
+      "matched": true
+    },
+    {
+      "id": "L01:126-139>L02:70-113",
+      "from_observation": "L01:126-139",
+      "to_observation": "L02:70-113",
+      "relationship": "same_finding",
+      "comparison_date": null,
+      "basis": "Same finding and side; no resolved comparison; review required",
+      "review_required": true,
+      "evidence": {
+        "from": "Kein Aszites.",
+        "to": "Neu zeigt sich wenig Aszites perihepatisch."
+      },
+      "reference_pair": [
+        "LE03",
+        "LE05"
+      ],
+      "matched": true
+    },
+    {
+      "id": "L01:0-68>L03:0-105",
+      "from_observation": "L01:0-68",
+      "to_observation": "L03:0-105",
+      "relationship": "progressed",
+      "comparison_date": "2024-02-05",
+      "basis": "Explicit comparison",
+      "review_required": false,
+      "evidence": {
+        "from": "Im rechten Leberlappen zeigt sich eine 14 mm große hypodense Läsion.",
+        "to": "Die Läsion im rechten Leberlappen ist gegenüber dem CT vom 05.02.2024 von 14 auf 19 mm größenprogredient."
+      },
+      "reference_pair": [
+        "LE01",
+        "LE06"
+      ],
+      "matched": true
+    },
+    {
+      "id": "L01:69-125>L03:106-187",
+      "from_observation": "L01:69-125",
+      "to_observation": "L03:106-187",
+      "relationship": "same_finding",
+      "comparison_date": null,
+      "basis": "Same finding and side; no resolved comparison; review required",
+      "review_required": true,
+      "evidence": {
+        "from": "Im linken Leberlappen findet sich eine 5 mm große Zyste.",
+        "to": "Die Zyste im linken Leberlappen ist gegenüber dem MRT vom 10.01.2023 unverändert."
+      },
+      "reference_pair": [
+        "LE02",
+        "LE07"
+      ],
+      "matched": true
+    },
+    {
+      "id": "L02:70-113>L03:188-240",
+      "from_observation": "L02:70-113",
+      "to_observation": "L03:188-240",
+      "relationship": "improved",
+      "comparison_date": "2024-03-11",
+      "basis": "Explicit comparison",
+      "review_required": false,
+      "evidence": {
+        "from": "Neu zeigt sich wenig Aszites perihepatisch.",
+        "to": "Der Aszites ist gegenüber dem 11.03.2024 rückläufig."
+      },
+      "reference_pair": [
+        "LE05",
+        "LE08"
+      ],
+      "matched": true
+    },
+    {
+      "id": "L03:188-240>L04:0-25",
+      "from_observation": "L03:188-240",
+      "to_observation": "L04:0-25",
+      "relationship": "same_finding",
+      "comparison_date": null,
+      "basis": "Same finding and side; no resolved comparison; review required",
+      "review_required": true,
+      "evidence": {
+        "from": "Der Aszites ist gegenüber dem 11.03.2024 rückläufig.",
+        "to": "Kein Aszites nachweisbar."
+      },
+      "reference_pair": [
+        "LE08",
+        "LE10"
+      ],
+      "matched": true
+    },
+    {
+      "id": "L03:241-325>L04:26-61",
+      "from_observation": "L03:241-325",
+      "to_observation": "L04:26-61",
+      "relationship": "same_finding",
+      "comparison_date": null,
+      "basis": "Same finding and side; no resolved comparison; review required",
+      "review_required": true,
+      "evidence": {
+        "from": "Ein Gallengangsstent liegt regelrecht in situ; das Einlagedatum ist nicht angegeben.",
+        "to": "Der Gallengangsstent liegt in situ."
+      },
+      "reference_pair": [
+        "LE09",
+        "LE11"
+      ],
+      "matched": true
+    },
+    {
+      "id": "L04:26-61>L05:91-127",
+      "from_observation": "L04:26-61",
+      "to_observation": "L05:91-127",
+      "relationship": "same_finding",
+      "comparison_date": null,
+      "basis": "Same finding and side; no resolved comparison; review required; later report is undated, so order is unknown",
+      "review_required": true,
+      "evidence": {
+        "from": "Der Gallengangsstent liegt in situ.",
+        "to": "Ein Gallengangsstent ist einliegend."
+      },
+      "reference_pair": [
+        "LE11",
+        "LE14"
+      ],
+      "matched": true
+    }
+  ],
+  "findings": [
+    {
+      "id": "f:L01:69-125",
+      "concept": "Left liver cyst",
+      "laterality": "left",
+      "observations": [
+        "L01:69-125",
+        "L03:106-187"
+      ],
+      "first_documented": "2024-02-05",
+      "first_documented_uncertain": false,
+      "review_required": true
+    },
+    {
+      "id": "f:L01:0-68",
+      "concept": "Right liver lesion",
+      "laterality": "right",
+      "observations": [
+        "L01:0-68",
+        "L02:0-69",
+        "L03:0-105"
+      ],
+      "first_documented": "2024-02-05",
+      "first_documented_uncertain": false,
+      "review_required": true
+    },
+    {
+      "id": "f:L01:126-139",
+      "concept": "Ascites",
+      "laterality": null,
+      "observations": [
+        "L01:126-139",
+        "L02:70-113",
+        "L03:188-240",
+        "L04:0-25"
+      ],
+      "first_documented": "2024-03-11",
+      "first_documented_uncertain": false,
+      "review_required": true
+    },
+    {
+      "id": "f:L03:241-325",
+      "concept": "Biliary stent",
+      "laterality": null,
+      "observations": [
+        "L03:241-325",
+        "L04:26-61",
+        "L05:91-127"
+      ],
+      "first_documented": "2024-04-22",
+      "first_documented_uncertain": true,
+      "review_required": true
+    },
+    {
+      "id": "f:L04:62-102",
+      "concept": "New left liver lesion",
+      "laterality": "left",
+      "observations": [
+        "L04:62-102"
+      ],
+      "first_documented": null,
+      "first_documented_uncertain": false,
+      "review_required": false
+    },
+    {
+      "id": "f:L05:0-90",
+      "concept": "Right liver biopsy",
+      "laterality": "right",
+      "observations": [
+        "L05:0-90"
+      ],
+      "first_documented": null,
+      "first_documented_uncertain": false,
+      "review_required": false
+    }
+  ]
+}

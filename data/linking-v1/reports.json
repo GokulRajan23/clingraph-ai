@@ -1,0 +1,118 @@
+[
+  {
+    "id": "L01",
+    "patient_id": "SYN-004",
+    "split": "linking_check",
+    "language": "de",
+    "title": "CT Abdomen",
+    "report_date": "2024-02-05",
+    "date_type": "report_date",
+    "text": "Im rechten Leberlappen zeigt sich eine 14 mm große hypodense Läsion.\nIm linken Leberlappen findet sich eine 5 mm große Zyste.\nKein Aszites.",
+    "sentences": [
+      {
+        "id": "L01:s1",
+        "text": "Im rechten Leberlappen zeigt sich eine 14 mm große hypodense Läsion."
+      },
+      {
+        "id": "L01:s2",
+        "text": "Im linken Leberlappen findet sich eine 5 mm große Zyste."
+      },
+      {
+        "id": "L01:s3",
+        "text": "Kein Aszites."
+      }
+    ]
+  },
+  {
+    "id": "L02",
+    "patient_id": "SYN-004",
+    "split": "linking_check",
+    "language": "de",
+    "title": "Sonographie Abdomen",
+    "report_date": "2024-03-11",
+    "date_type": "report_date",
+    "text": "Die bekannte Läsion im rechten Leberlappen misst sonographisch 15 mm.\nNeu zeigt sich wenig Aszites perihepatisch.",
+    "sentences": [
+      {
+        "id": "L02:s1",
+        "text": "Die bekannte Läsion im rechten Leberlappen misst sonographisch 15 mm."
+      },
+      {
+        "id": "L02:s2",
+        "text": "Neu zeigt sich wenig Aszites perihepatisch."
+      }
+    ]
+  },
+  {
+    "id": "L03",
+    "patient_id": "SYN-004",
+    "split": "linking_check",
+    "language": "de",
+    "title": "CT Abdomen Verlauf",
+    "report_date": "2024-04-22",
+    "date_type": "report_date",
+    "text": "Die Läsion im rechten Leberlappen ist gegenüber dem CT vom 05.02.2024 von 14 auf 19 mm größenprogredient.\nDie Zyste im linken Leberlappen ist gegenüber dem MRT vom 10.01.2023 unverändert.\nDer Aszites ist gegenüber dem 11.03.2024 rückläufig.\nEin Gallengangsstent liegt regelrecht in situ; das Einlagedatum ist nicht angegeben.",
+    "sentences": [
+      {
+        "id": "L03:s1",
+        "text": "Die Läsion im rechten Leberlappen ist gegenüber dem CT vom 05.02.2024 von 14 auf 19 mm größenprogredient."
+      },
+      {
+        "id": "L03:s2",
+        "text": "Die Zyste im linken Leberlappen ist gegenüber dem MRT vom 10.01.2023 unverändert."
+      },
+      {
+        "id": "L03:s3",
+        "text": "Der Aszites ist gegenüber dem 11.03.2024 rückläufig."
+      },
+      {
+        "id": "L03:s4",
+        "text": "Ein Gallengangsstent liegt regelrecht in situ; das Einlagedatum ist nicht angegeben."
+      }
+    ]
+  },
+  {
+    "id": "L04",
+    "patient_id": "SYN-004",
+    "split": "linking_check",
+    "language": "de",
+    "title": "Sonographie Abdomen",
+    "report_date": "2024-06-03",
+    "date_type": "report_date",
+    "text": "Kein Aszites nachweisbar.\nDer Gallengangsstent liegt in situ.\nIm linken Leberlappen keine neue Läsion.",
+    "sentences": [
+      {
+        "id": "L04:s1",
+        "text": "Kein Aszites nachweisbar."
+      },
+      {
+        "id": "L04:s2",
+        "text": "Der Gallengangsstent liegt in situ."
+      },
+      {
+        "id": "L04:s3",
+        "text": "Im linken Leberlappen keine neue Läsion."
+      }
+    ]
+  },
+  {
+    "id": "L05",
+    "patient_id": "SYN-004",
+    "split": "linking_check",
+    "language": "de",
+    "title": "Arztbrief (Auszug), undatiert",
+    "report_date": null,
+    "date_type": "report_date",
+    "text": "Laut Vorbefund wurde eine Leberbiopsie rechts durchgeführt; das Datum ist nicht angegeben.\nEin Gallengangsstent ist einliegend.",
+    "sentences": [
+      {
+        "id": "L05:s1",
+        "text": "Laut Vorbefund wurde eine Leberbiopsie rechts durchgeführt; das Datum ist nicht angegeben."
+      },
+      {
+        "id": "L05:s2",
+        "text": "Ein Gallengangsstent ist einliegend."
+      }
+    ]
+  }
+]

@@ -1,0 +1,282 @@
+{
+  "split": "development",
+  "source": "pipeline",
+  "pipeline_results": "20261113-194044_pipeline_development.json",
+  "created_at": "2026-11-13T20:06:01",
+  "summary": {
+    "observations": 17,
+    "unmapped_observations": 0,
+    "reference_links": 7,
+    "predicted_links": 7,
+    "matched_links": 7,
+    "precision": 1.0,
+    "recall": 1.0,
+    "agreement_on_matched": {
+      "relationship": 7,
+      "review_required": 7,
+      "comparison_date": 7
+    },
+    "missed_links": [],
+    "extra_links": [],
+    "wrong_merges": [],
+    "unresolved": {
+      "expected": [],
+      "predicted": [],
+      "matched": 0
+    },
+    "chains_rebuilt": "4/4",
+    "chains_rebuilt_ids": [
+      "dvt",
+      "effusion",
+      "nodule",
+      "puncture"
+    ]
+  },
+  "links": [
+    {
+      "id": "D01:26-84>D02:26-139",
+      "from_observation": "D01:26-84",
+      "to_observation": "D02:26-139",
+      "relationship": "progressed",
+      "comparison_date": "2024-01-10",
+      "basis": "Explicit comparison",
+      "review_required": false,
+      "evidence": {
+        "from": "Im rechten Oberlappen zeigt sich ein 6 mm großer Rundherd.",
+        "to": "Der bekannte Rundherd im rechten Oberlappen ist gegenüber dem CT vom 10.01.2024 von 6 auf 9 mm größenprogredient."
+      },
+      "reference_pair": [
+        "E01",
+        "E04"
+      ],
+      "matched": true
+    },
+    {
+      "id": "D02:26-139>D04:26-111",
+      "from_observation": "D02:26-139",
+      "to_observation": "D04:26-111",
+      "relationship": "stable",
+      "comparison_date": "2024-03-12",
+      "basis": "Explicit comparison",
+      "review_required": false,
+      "evidence": {
+        "from": "Der bekannte Rundherd im rechten Oberlappen ist gegenüber dem CT vom 10.01.2024 von 6 auf 9 mm größenprogredient.",
+        "to": "Der Rundherd im rechten Oberlappen ist gegenüber dem 12.03.2024 mit 9 mm unverändert."
+      },
+      "reference_pair": [
+        "E04",
+        "E10"
+      ],
+      "matched": true
+    },
+    {
+      "id": "D02:140-192>D04:112-192",
+      "from_observation": "D02:140-192",
+      "to_observation": "D04:112-192",
+      "relationship": "improved",
+      "comparison_date": "2024-03-12",
+      "basis": "Explicit comparison",
+      "review_required": false,
+      "evidence": {
+        "from": "Neu besteht ein kleiner rechtsseitiger Pleuraerguss.",
+        "to": "Der rechtsseitige Pleuraerguss ist gegenüber dem 12.03.2024 deutlich rückläufig."
+      },
+      "reference_pair": [
+        "E05",
+        "E11"
+      ],
+      "matched": true
+    },
+    {
+      "id": "D03:26-119>D05:0-100",
+      "from_observation": "D03:26-119",
+      "to_observation": "D05:0-100",
+      "relationship": "historical_reference",
+      "comparison_date": null,
+      "basis": "Same finding and side; no resolved comparison; review required; later report is undated, so order is unknown",
+      "review_required": true,
+      "evidence": {
+        "from": "Am 08.04.2024 erfolgte eine rechtsseitige Pleurapunktion mit Entnahme von 300 ml Flüssigkeit.",
+        "to": "Eine Pleurapunktion wurde laut Vorbericht durchgeführt; das Eingriffsdatum ist hier nicht angegeben."
+      },
+      "reference_pair": [
+        "E07",
+        "E13"
+      ],
+      "matched": true
+    },
+    {
+      "id": "D04:26-111>D06:26-122",
+      "from_observation": "D04:26-111",
+      "to_observation": "D06:26-122",
+      "relationship": "stable",
+      "comparison_date": "2024-05-14",
+      "basis": "Explicit comparison",
+      "review_required": false,
+      "evidence": {
+        "from": "Der Rundherd im rechten Oberlappen ist gegenüber dem 12.03.2024 mit 9 mm unverändert.",
+        "to": "Der bekannte Rundherd im rechten Oberlappen ist gegenüber dem CT vom 14.05.2024 mit 9 mm stabil."
+      },
+      "reference_pair": [
+        "E10",
+        "E15"
+      ],
+      "matched": true
+    },
+    {
+      "id": "D04:112-192>D06:123-190",
+      "from_observation": "D04:112-192",
+      "to_observation": "D06:123-190",
+      "relationship": "unclear",
+      "comparison_date": null,
+      "basis": "Same finding and side; no resolved comparison; review required",
+      "review_required": true,
+      "evidence": {
+        "from": "Der rechtsseitige Pleuraerguss ist gegenüber dem 12.03.2024 deutlich rückläufig.",
+        "to": "Im Befund wird ein kleiner rechtsseitiger Pleuraerguss beschrieben."
+      },
+      "reference_pair": [
+        "E11",
+        "E16"
+      ],
+      "matched": true
+    },
+    {
+      "id": "D04:112-192>D06:204-237",
+      "from_observation": "D04:112-192",
+      "to_observation": "D06:204-237",
+      "relationship": "unclear",
+      "comparison_date": null,
+      "basis": "Same finding and side; no resolved comparison; review required",
+      "review_required": true,
+      "evidence": {
+        "from": "Der rechtsseitige Pleuraerguss ist gegenüber dem 12.03.2024 deutlich rückläufig.",
+        "to": "Kein rechtsseitiger Pleuraerguss."
+      },
+      "reference_pair": [
+        "E11",
+        "E17"
+      ],
+      "matched": true
+    }
+  ],
+  "findings": [
+    {
+      "id": "f:D01:106-160",
+      "concept": "Inflammatory origin of pulmonary nodule",
+      "laterality": null,
+      "observations": [
+        "D01:106-160"
+      ],
+      "first_documented": "2024-01-10",
+      "first_documented_uncertain": false,
+      "review_required": false
+    },
+    {
+      "id": "f:D01:26-84",
+      "concept": "Right upper-lobe pulmonary nodule",
+      "laterality": "right",
+      "observations": [
+        "D01:26-84",
+        "D02:26-139",
+        "D04:26-111",
+        "D06:26-122"
+      ],
+      "first_documented": "2024-01-10",
+      "first_documented_uncertain": false,
+      "review_required": false
+    },
+    {
+      "id": "f:D02:140-192",
+      "concept": "Right-sided pleural effusion",
+      "laterality": "right",
+      "observations": [
+        "D02:140-192",
+        "D04:112-192",
+        "D06:123-190",
+        "D06:204-237"
+      ],
+      "first_documented": "2024-03-12",
+      "first_documented_uncertain": false,
+      "review_required": true
+    },
+    {
+      "id": "f:D03:26-119",
+      "concept": "Right-sided pleural puncture",
+      "laterality": "right",
+      "observations": [
+        "D03:26-119",
+        "D05:0-100"
+      ],
+      "first_documented": "2024-04-09",
+      "first_documented_uncertain": true,
+      "review_required": true
+    },
+    {
+      "id": "f:D03:120-165",
+      "concept": "Cytology result",
+      "laterality": null,
+      "observations": [
+        "D03:120-165"
+      ],
+      "first_documented": null,
+      "first_documented_uncertain": false,
+      "review_required": false
+    },
+    {
+      "id": "f:D05:101-190",
+      "concept": "Deep vein thrombosis, left leg",
+      "laterality": "left",
+      "observations": [
+        "D05:101-190"
+      ],
+      "first_documented": null,
+      "first_documented_uncertain": false,
+      "review_required": false
+    },
+    {
+      "id": "f:D04:193-223",
+      "concept": "New pulmonary nodules",
+      "laterality": null,
+      "observations": [
+        "D04:193-223"
+      ],
+      "first_documented": null,
+      "first_documented_uncertain": false,
+      "review_required": false
+    },
+    {
+      "id": "f:D01:85-105",
+      "concept": "Pleural effusion",
+      "laterality": null,
+      "observations": [
+        "D01:85-105"
+      ],
+      "first_documented": null,
+      "first_documented_uncertain": false,
+      "review_required": false
+    },
+    {
+      "id": "f:D03:166-198",
+      "concept": "Pneumothorax",
+      "laterality": null,
+      "observations": [
+        "D03:166-198"
+      ],
+      "first_documented": null,
+      "first_documented_uncertain": false,
+      "review_required": false
+    },
+    {
+      "id": "f:D02:193-237",
+      "concept": "Pulmonary embolism",
+      "laterality": null,
+      "observations": [
+        "D02:193-237"
+      ],
+      "first_documented": null,
+      "first_documented_uncertain": false,
+      "review_required": false
+    }
+  ]
+}

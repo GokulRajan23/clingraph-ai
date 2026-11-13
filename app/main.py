@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ValidationError
 from app.extraction.prompt import PROMPT_VERSION, SETTINGS
 from app.extraction.service import MAX_CHARS, report_input, verify
+from app.linking import build, observation
 
 # Stream model downloads over HTTP to reduce peak download memory on laptops.
 os.environ.setdefault('HF_HUB_DISABLE_XET','1')
@@ -25,6 +26,10 @@ def connect():
 def init():
  with connect() as c:
   c.execute("CREATE TABLE IF NOT EXISTS documents (id TEXT PRIMARY KEY, digest TEXT UNIQUE, payload TEXT NOT NULL)")
+  # Phase 5 tables are derived: rebuilt from current extractions and report dates, never edited directly.
+  c.execute("CREATE TABLE IF NOT EXISTS observations (id TEXT PRIMARY KEY, finding_id TEXT, report_id TEXT, report_date TEXT, payload TEXT NOT NULL)")
+  c.execute("CREATE TABLE IF NOT EXISTS findings (id TEXT PRIMARY KEY, payload TEXT NOT NULL)")
+  c.execute("CREATE TABLE IF NOT EXISTS links (id TEXT PRIMARY KEY, from_observation TEXT, to_observation TEXT, relationship TEXT, review_required INTEGER, payload TEXT NOT NULL)")
 def save(d):
  with connect() as c:c.execute('INSERT OR REPLACE INTO documents VALUES(?,?,?)',(d['id'],d['digest'],json.dumps(d,ensure_ascii=False)))
 def documents():
@@ -114,6 +119,21 @@ def extract(id,extractor):
   result=dict(status='failed',error=extraction_error(exc))
  with LOCK:
   d=get(id);d['extraction'].update(result,latency_s=round(time.perf_counter()-started,2),finished_at=now());save(d)
+  if result['status']=='ready':rebuild_links()
+
+def rebuild_links():
+ # One workspace holds one patient; observations get the same patient id.
+ with LOCK:
+  ready=[d for d in documents() if d['status']=='ready' and (d.get('extraction') or {}).get('status')=='ready']
+  result=build([observation(d,e) for d in ready for e in d['extraction']['events']])
+  finding_of={o:f['id'] for f in result['findings'] for o in f['observations']}
+  unresolved={}
+  for u in result['unresolved']:unresolved.setdefault(u['observation'],[]).append(u)
+  with connect() as c:
+   for table in ['observations','findings','links']:c.execute(f'DELETE FROM {table}')
+   c.executemany('INSERT INTO observations VALUES(?,?,?,?,?)',[(o['id'],finding_of[o['id']],o['report_id'],o['report_date'],json.dumps({**o,'unresolved':unresolved.get(o['id'],[])},ensure_ascii=False)) for o in result['observations']])
+   c.executemany('INSERT INTO findings VALUES(?,?)',[(f['id'],json.dumps(f,ensure_ascii=False)) for f in result['findings']])
+   c.executemany('INSERT OR REPLACE INTO links VALUES(?,?,?,?,?,?)',[(x['id'],x['from_observation'],x['to_observation'],x['relationship'],int(x['review_required']),json.dumps(x,ensure_ascii=False)) for x in result['links']])
 
 def interrupt_extractions():
  # Do not resume automatically: each request sends report text to DeutschlandGPT and uses credits.
@@ -147,7 +167,7 @@ def process(id):
 
 @asynccontextmanager
 async def lifespan(app):
- init();interrupt_extractions()
+ init();interrupt_extractions();rebuild_links()
  for d in documents():
   if d['status'] in ['queued','processing']:POOL.submit(process,d['id'])
  yield
@@ -190,6 +210,7 @@ def correct_date(id:str,body:DateCorrection):
  with LOCK:
   d=get(id);d['date_history'].append({'previous':d['report_date'],'value':body.report_date.isoformat() if body.report_date else None,'at':now()})
   d.update(report_date=body.report_date.isoformat() if body.report_date else None,date_source='manual');save(d)
+  rebuild_links()
  return d
 @app.post('/api/documents/{id}/retry',status_code=202)
 def retry(id:str):
@@ -214,3 +235,13 @@ def start_extraction(id:str):
   save(d)
  POOL.submit(extract,id,extractor)
  return JSONResponse(d,status_code=202)
+@app.get('/api/findings')
+def findings():
+ # Observations in date order (undated last); links and unresolved comparisons keep their evidence.
+ with connect() as c:
+  observations={x['id']:json.loads(x['payload']) for x in c.execute('SELECT id,payload FROM observations')}
+  result=[json.loads(x['payload']) for x in c.execute('SELECT payload FROM findings')]
+  links=[json.loads(x['payload']) for x in c.execute('SELECT payload FROM links')]
+ for f in result:f['observations']=[observations[o] for o in f['observations']]
+ result.sort(key=lambda f:(f['first_documented'] is None,f['first_documented'] or '',f['concept']))
+ return {'findings':result,'links':links,'unresolved':[u for o in observations.values() for u in o['unresolved']]}
