@@ -8,14 +8,16 @@ interface Props {
   graph: Graph
   node: GraphNode
   onFocus: (focus: Focus) => void
+  /** In the page flow (timeline) instead of floating over the graph. */
+  inline?: boolean
 }
 
 /** Details for the clicked node: type, properties, source reports and connection count. */
-export function NodeCard({ graph, node, onFocus }: Props) {
+export function NodeCard({ graph, node, onFocus, inline = false }: Props) {
   const sources = sourceReports(graph, node.id)
   const connections = neighborhood(graph, node.id).size - 1
   return (
-    <aside className="node-card" aria-label={`Details: ${node.label}`}>
+    <aside className={inline ? 'node-card inline' : 'node-card'} aria-label={`Details: ${node.label}`}>
       <div className="node-card-head">
         <span className="node-type">
           <ShapeIcon type={node.type} />

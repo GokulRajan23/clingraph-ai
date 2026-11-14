@@ -29,14 +29,18 @@ Copy `.env.example` to `.env` (git-ignored) and set `ELEVENLABS_API_KEY`. The ke
 ## What v1 does
 
 - **Reports (left):** upload one or more PDFs with the button or by dropping them anywhere on the page. Each file shows its size and a processing → processed status, and can be removed (which starts a new conversation, since the graph changes). Non-PDF files and duplicates are skipped with a notice.
-- **Knowledge graph (centre):** a spinner while reports are processed, then the patient's graph: reports, findings and their states over time, diagnoses, procedures and medications. Pan, zoom and drag nodes; click a node to highlight its neighbourhood and see its properties and source reports.
-- **Chat (right):** once the graph is shown, suggested questions appear. Each answer cites its source reports and highlights the nodes it is about.
+- **Centre:** two tabs, **Knowledge graph** and **Clinical timeline**, with a spinner while reports are processed. The collapse button (top right) folds the whole centre panel into a narrow strip so reports and chat get the room; click the strip to bring it back. The open tab and the collapsed state are remembered in the browser.
+  - **Knowledge graph:** the patient's reports, findings and their states over time, diagnoses, procedures and medications. Pan, zoom and drag nodes; click a node to highlight its neighbourhood and see its properties and source reports.
+  - **Clinical timeline:** the same history on a date axis. Each report is a dashed tick labelled with its file name and date. Every finding has a lane showing how it changed at each report (New, Progressed, Stable, Improved, each with its own colour and glyph; Documented where a report mentions it without a change), followed by lanes for diagnoses, procedures and therapy (a bar per medication; ongoing ones run to the end). Hover or focus an item for its details; click it to highlight what it is connected to and open its details below. The selection is shared with the graph.
+- **Chat (right):** once the graph is shown, suggested questions appear. Each answer cites its source reports and highlights the items it is about in both the graph and the timeline.
+
+The interface uses Google Sans (SIL Open Font License), bundled through `@fontsource-variable/google-sans`, so no font requests go to Google.
 
 ## Not connected yet
 
 PDFs never leave the browser and are not parsed: the graph is a synthetic fixture (`frontend/src/graph/fixture.ts`) whose five report nodes take the uploaded file names in upload order, and chat answers are hardcoded (`frontend/src/chat/script.ts`). Questions other than the suggested ones get a fallback answer.
 
-Everything the UI needs goes through `frontend/src/api.ts`. Connecting PDF parsing, graph building and graph querying means replacing `processReports`, `fetchGraph`, `fetchSuggestions` and `ask`; the `Graph` shape is defined in `frontend/src/graph/types.ts`. The voice functions there already call the backend (`backend/`).
+Everything the UI needs goes through `frontend/src/api.ts`. Connecting PDF parsing, graph building and graph querying means replacing `processReports`, `fetchGraph`, `fetchSuggestions` and `ask`; the `Graph` shape is defined in `frontend/src/graph/types.ts`. `fetchTimeline` derives the timeline from the graph (`frontend/src/graph/timeline.ts`: report dates, observation `Change`/`Date`, procedure `Date`, medication `Started`/`Stopped`), so it follows any graph of that shape; a backend can return a `Timeline` instead as long as its node IDs match the graph's. The voice functions there already call the backend (`backend/`).
 
 ## Checks
 

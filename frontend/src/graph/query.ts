@@ -15,18 +15,28 @@ export function neighborhood(graph: Graph, id: string): Set<string> {
  * observed states, so a finding lists every report that describes one of them.
  */
 export function sourceReports(graph: Graph, id: string): GraphNode[] {
-  // The finding itself, its first state, and every state chained after it.
-  const subjects = new Set([id])
+  const subjects = new Set([id, ...findingStates(graph, id)])
+  return reportsOf(graph, subjects)
+}
+
+/** Report nodes that any of the given nodes is `documented_in`, in graph order. */
+export function reportsOf(graph: Graph, ids: Set<string>): GraphNode[] {
+  const targets = new Set(graph.edges.filter((e) => ids.has(e.source) && e.relation === SOURCE_RELATION).map((e) => e.target))
+  return graph.nodes.filter((n) => n.type === 'report' && targets.has(n.id))
+}
+
+/** IDs of a finding's observed states: its first state and every state chained after it. */
+export function findingStates(graph: Graph, id: string): string[] {
+  const found: string[] = []
   const states = graph.edges.filter((e) => e.source === id && e.relation === OBSERVATION_RELATION).map((e) => e.target)
   const observations = new Set(graph.nodes.filter((n) => n.type === 'observation').map((n) => n.id))
   while (states.length > 0) {
     const state = states.pop()!
-    if (subjects.has(state)) continue
-    subjects.add(state)
+    if (state === id || found.includes(state) || !observations.has(state)) continue
+    found.push(state)
     for (const e of graph.edges) if (e.source === state && observations.has(e.target)) states.push(e.target)
   }
-  const targets = new Set(graph.edges.filter((e) => subjects.has(e.source) && e.relation === SOURCE_RELATION).map((e) => e.target))
-  return graph.nodes.filter((n) => n.type === 'report' && targets.has(n.id))
+  return found
 }
 
 export function nodeById(graph: Graph, id: string): GraphNode | undefined {

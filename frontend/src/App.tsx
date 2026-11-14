@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
-import { ask, fetchGraph, fetchSuggestions, processReports, voiceStatus } from './api'
+import { ask, fetchGraph, fetchSuggestions, fetchTimeline, processReports, voiceStatus } from './api'
 import { speechText, type Answer } from './chat/script'
 import { ChatPanel, type VoiceControls } from './components/ChatPanel'
-import { GraphPanel } from './components/GraphPanel'
+import { CentrePanel, VIEWS } from './components/CentrePanel'
 import { ReportsPanel } from './components/ReportsPanel'
+import type { Timeline } from './graph/timeline'
 import type { Graph } from './graph/types'
+import { usePersistentChoice } from './persist'
 import { useSpeech } from './voice/useSpeech'
 import { useVoiceInput } from './voice/useVoiceInput'
 
@@ -47,6 +49,9 @@ export default function App() {
   const [dragging, setDragging] = useState(false)
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [voiceEnabled, setVoiceEnabled] = useState(false)
+  const [loadedTimeline, setLoadedTimeline] = useState<{ graph: Graph; timeline: Timeline } | null>(null)
+  const [view, setView] = usePersistentChoice('clingraph.view', 'graph', VIEWS)
+  const [centre, setCentre] = usePersistentChoice('clingraph.centre', 'expanded', ['expanded', 'collapsed'] as const)
   // Bumped when the chat is reset, so an answer still in flight is dropped.
   const conversation = useRef(0)
 
@@ -55,6 +60,10 @@ export default function App() {
   const graphKey = processed.length > 0 ? JSON.stringify(processed) : ''
   const graph = graphKey ? (loaded?.graph ?? null) : null
   const busy = uploads.some((u) => u.status === 'processing') || (graphKey !== '' && loaded?.key !== graphKey)
+  // While the next graph's timeline loads, the previous one stays on screen (under the busy
+  // overlay) so the view is not torn down and rebuilt on every upload or removal.
+  const timeline = graph ? (loadedTimeline?.timeline ?? null) : null
+  const timelineStale = graph !== null && loadedTimeline?.graph !== graph
 
   useEffect(() => {
     if (!graphKey) return
@@ -70,6 +79,17 @@ export default function App() {
   useEffect(() => {
     if (!graph) return
     let live = true
+    void fetchTimeline(graph).then((next) => {
+      if (live) setLoadedTimeline({ graph, timeline: next })
+    })
+    return () => {
+      live = false
+    }
+  }, [graph])
+
+  useEffect(() => {
+    if (!graph) return
+    let live = true
     void fetchSuggestions().then((next) => {
       if (live) setSuggestions(next)
     })
@@ -80,7 +100,10 @@ export default function App() {
 
   // With every report removed, start over: no graph from the previous session may reappear.
   useEffect(() => {
-    if (uploads.length === 0) setLoaded(null)
+    if (uploads.length === 0) {
+      setLoaded(null)
+      setLoadedTimeline(null)
+    }
   }, [uploads.length])
 
   useEffect(() => {
@@ -189,9 +212,19 @@ export default function App() {
         </div>
         <p className="tagline">From medical reports to a connected patient history</p>
       </header>
-      <main className="workspace">
+      <main className={`workspace${centre === 'collapsed' ? ' centre-collapsed' : ''}`}>
         <ReportsPanel uploads={uploads} notice={notice} onAdd={addFiles} onRemove={removeUpload} />
-        <GraphPanel graph={graph} busy={busy} focus={focus} onFocus={setFocus} />
+        <CentrePanel
+          graph={graph}
+          timeline={timeline}
+          busy={busy || timelineStale}
+          focus={focus}
+          onFocus={setFocus}
+          view={view}
+          onView={setView}
+          collapsed={centre === 'collapsed'}
+          onCollapsed={(collapsed) => setCentre(collapsed ? 'collapsed' : 'expanded')}
+        />
         <ChatPanel
           graph={graph}
           reportCount={processed.length}

@@ -173,7 +173,7 @@ function AnswerBubble({ message, graph, focus, onFocus, voice }: AnswerProps) {
       <div className="answer-actions">
         {answer.highlight.length > 0 && (
           <button className="link-button" disabled={shown} onClick={() => onFocus({ kind: 'answer', messageId: message.id, ids: answer.highlight })}>
-            {shown ? 'Highlighted in graph' : 'Show in graph'}
+            {shown ? 'Highlighted in graph and timeline' : 'Show in graph and timeline'}
           </button>
         )}
         {voice.enabled && (

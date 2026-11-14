@@ -1,3 +1,4 @@
+import type { Change } from './timeline'
 import type { NodeType } from './types'
 
 export type Shape = 'hub' | 'square' | 'circle' | 'dot' | 'diamond' | 'triangle' | 'pill'
@@ -27,7 +28,26 @@ export const TYPE_STYLE: Record<NodeType, TypeStyle> = {
   medication: { name: 'Medication', color: '#008300', shape: 'pill', radius: 6.5 },
 }
 
-export const LEGEND_ORDER: NodeType[] = ['patient', 'report', 'finding', 'observation', 'diagnosis', 'procedure', 'medication']
+/*
+ * Timeline: colour encodes only how a finding changed. Progressed ↔ improved is a polarity, so
+ * they take the warm/cool poles (red, blue) with stable as the neutral ink midpoint; new keeps
+ * the finding hue. The three hues validate all-pairs on #fffefa (worst CVD ΔE 15.3, normal 20.8);
+ * the amber is below 3:1 contrast, so every mark is also direct-labelled. Each change has its own
+ * glyph inside the circle, and documented-only marks are a hollow ring. Diagnoses, procedures
+ * and therapy are drawn in neutral ink with their graph shapes: adding their graph hues to the
+ * same view fails the normal-vision floor (diagnosis pink ↔ progressed red, ΔE 13.2).
+ */
+export const CHANGE_STYLE: Record<Change, { color: string; glyph: 'plus' | 'up' | 'equal' | 'down' | 'ring'; glyphColor: string }> = {
+  new: { color: '#eda100', glyph: 'plus', glyphColor: '#29293c' },
+  progressed: { color: '#e34948', glyph: 'up', glyphColor: '#ffffff' },
+  stable: { color: '#29293c', glyph: 'equal', glyphColor: '#ffffff' },
+  improved: { color: '#2a78d6', glyph: 'down', glyphColor: '#ffffff' },
+  documented: { color: '#6f6c7d', glyph: 'ring', glyphColor: '#6f6c7d' },
+}
+
+export const CHANGE_ORDER: Change[] = ['new', 'progressed', 'stable', 'improved', 'documented']
+
+export const LEGEND_ORDER: NodeType[] =['patient', 'report', 'finding', 'observation', 'diagnosis', 'procedure', 'medication']
 
 /** Traces a type's shape centred on (x, y). The caller fills and strokes. */
 export function tracePath(ctx: CanvasRenderingContext2D | Path2D, shape: Shape, x: number, y: number, r: number): void {

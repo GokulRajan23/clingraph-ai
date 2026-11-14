@@ -1,11 +1,12 @@
 /**
- * The only seam between the UI and the outside world. Graph building and querying are still
+ * The only seam between the UI and the outside world. Graph building, the timeline and querying are still
  * resolved locally from a fixture and hardcoded answers; voice goes through the backend
  * (/api/voice/*), which holds the ElevenLabs key.
  */
 import { answerFor, SUGGESTIONS, type Answer } from './chat/script'
 import { FIXTURE } from './graph/fixture'
 import { nameReports } from './graph/naming'
+import { deriveTimeline, type Timeline } from './graph/timeline'
 import type { Graph } from './graph/types'
 
 const PROCESSING_MS = 1600
@@ -21,6 +22,14 @@ export async function processReports(_files: File[]): Promise<void> {
 /** The knowledge graph for the processed reports, given their file names in upload order. */
 export async function fetchGraph(fileNames: string[]): Promise<Graph> {
   return nameReports(FIXTURE, fileNames)
+}
+
+/**
+ * The patient's history over time for a graph returned by `fetchGraph`. Derived locally for now;
+ * a backend may return it instead, as long as its node IDs match the graph's.
+ */
+export async function fetchTimeline(graph: Graph): Promise<Timeline> {
+  return deriveTimeline(graph)
 }
 
 /** Questions to offer once the graph is ready. */
