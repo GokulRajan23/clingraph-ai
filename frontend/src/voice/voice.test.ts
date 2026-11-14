@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FALLBACK, SUGGESTIONS, speechText } from '../chat/script'
+import { FALLBACK, speakable, SUGGESTIONS, speechText } from '../chat/script'
 import { rms, SilenceDetector } from './silence'
 
 const options = { threshold: 0.1, trailingSilenceMs: 1000, noSpeechMs: 3000, maxMs: 10000 }
@@ -47,28 +47,26 @@ describe('silence detection', () => {
 })
 
 describe('spoken answers', () => {
-  it('joins lines and spells out clinical units', () => {
+  it('joins sentences and spells out clinical units', () => {
     const text = speechText(SUGGESTIONS[0].answer)
-    expect(text).toContain('14 millimetres in the right upper lobe.')
+    expect(speechText(SUGGESTIONS[1].answer)).toContain('removed the 6 millimetre stone')
     expect(text).not.toMatch(/\bmm\b/)
-    expect(text).not.toContain('[')
   })
 
-  it('reads doses, percentages, volumes and regimens naturally', () => {
-    expect(speechText(SUGGESTIONS[1].answer)).toContain('PD-L1 60 percent')
-    expect(speechText(SUGGESTIONS[1].answer)).toContain('1,200 millilitres')
-    expect(speechText(SUGGESTIONS[3].answer)).toContain('carboplatin and pemetrexed')
+  it('reads doses, percentages, volumes and shorthand naturally', () => {
+    expect(speechText(SUGGESTIONS[2].answer)).toContain('back to 1.0 milligrams per decilitre')
+    expect(speakable('a 6 Fr x 26 cm stent')).toBe('a 6 French x 26 cm stent')
+    expect(speakable('Tamsulosin MR 0.4 mg')).toBe('Tamsulosin modified release 0.4 milligrams')
+    expect(speakable('200 mg q3w')).toBe('200 milligrams every three weeks')
+    expect(speakable('grew to 19 mm in May, a 3 mm stone')).toBe('grew to 19 millimetres in May, a 3 millimetre stone')
   })
 
   it('reads dates in full, without a leading zero', () => {
-    const text = speechText(SUGGESTIONS[1].answer)
-    expect(text).toContain('(2 March 2022)')
-    expect(text).toContain('(21 June 2023)')
-    expect(speechText(SUGGESTIONS[0].answer)).toMatch(/^February 2022: first documented/)
-    expect(text).not.toMatch(/\b(Mar|Jun) \d{4}/)
+    expect(speakable('on 02 Mar 2022')).toBe('on 2 March 2022')
+    expect(speakable('since Jun 2023')).toBe('since June 2023')
   })
 
   it('speaks the fallback as is', () => {
-    expect(speechText(FALLBACK)).toBe(FALLBACK.lines[0].text)
+    expect(speechText(FALLBACK)).toBe(FALLBACK.sentences[0])
   })
 })

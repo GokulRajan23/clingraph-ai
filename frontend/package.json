@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "ClinGraph v1: upload PDF reports, explore the patient knowledge graph and ask questions about it.",
+  "description": "ClinGraph v1: pick a patient, ask about their history by voice and see the answer in their knowledge graph.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -12,7 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@fontsource-variable/google-sans": "^5.3.2",
+    "@fontsource-variable/inter": "^5.3.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-force-graph-2d": "^1.29.2"

@@ -1,251 +1,302 @@
-import { useEffect, useRef, useState, type DragEvent } from 'react'
-import { ask, fetchGraph, fetchSuggestions, fetchTimeline, processReports, voiceStatus } from './api'
-import { historyOf, speechText, type Answer } from './chat/script'
-import { ChatPanel, type VoiceControls } from './components/ChatPanel'
-import { CentrePanel, VIEWS } from './components/CentrePanel'
-import { ReportsPanel } from './components/ReportsPanel'
-import type { Timeline } from './graph/timeline'
-import type { Graph } from './graph/types'
+import { useEffect, useRef, useState } from 'react'
+import { ask, voiceStatus } from './api'
+import { historyOf, speakable, type Answer } from './chat/script'
+import { GraphView } from './components/GraphView'
+import { HistoryTimeline } from './components/HistoryTimeline'
+import { Legend, Logo } from './components/Marks'
+import { ParticlePill } from './components/ParticlePill'
+import { PatientSearch } from './components/PatientSearch'
+import { SourceModal } from './components/SourceModal'
+import { Thread } from './components/Thread'
+import { PATIENTS, SOURCES, type Patient } from './demo/data'
+import { firstName } from './patients'
 import { usePersistentChoice } from './persist'
+import { phaseStatus, pillMode, voicePhase } from './voice/phase'
+import { mark } from './voice/timing'
 import { useSpeech } from './voice/useSpeech'
 import { useVoiceInput } from './voice/useVoiceInput'
-
-export interface Upload {
-  id: string
-  file: File
-  status: 'processing' | 'processed'
-}
-
-/** What the graph is highlighting: a clicked node's neighbourhood, or the nodes a chat answer is about. */
-export type Focus = { kind: 'node'; id: string } | { kind: 'answer'; messageId: string; ids: string[] } | null
 
 export interface AnswerMessage {
   id: string
   role: 'assistant'
   answer: Answer
 }
-export type Message = { id: string; role: 'user'; text: string; spoken: boolean } | AnswerMessage
-
-/** `id` changes on every notice, so a repeated message restarts its timer and is re-announced. */
-export interface Notice {
-  id: string
-  text: string
-}
+export type Message = { id: string; role: 'user'; text: string; spoken: boolean; at: Date } | AnswerMessage
 
 let sequence = 0
 const nextId = (prefix: string) => `${prefix}-${++sequence}`
+const VOICE_STATUS_RETRY_MS = 2000
+/** Microphone RMS a raised voice reaches; the pill swells no further. */
+const LOUD = 0.15
 
-const isPdf = (file: File) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
-const sameFile = (a: File, b: File) => a.name === b.name && a.size === b.size && a.lastModified === b.lastModified
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
-
+/**
+ * The whole app: pick a patient, tap the pill and ask. The first answer opens the patient's
+ * knowledge graph across most of the screen, with what the answer is about highlighted; the pill
+ * moves to the column on the right. Answers are spoken; their text is shown only on request.
+ */
 export default function App() {
-  const [uploads, setUploads] = useState<Upload[]>([])
-  const [notice, setNotice] = useState<Notice | null>(null)
-  const [loaded, setLoaded] = useState<{ key: string; graph: Graph } | null>(null)
-  const [focus, setFocus] = useState<Focus>(null)
+  const [patient, setPatient] = useState<Patient | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [pending, setPending] = useState(false)
-  const [dragging, setDragging] = useState(false)
-  const [suggestions, setSuggestions] = useState<string[]>([])
+  // Null until the first answer: the graph opens with it.
+  const [highlight, setHighlight] = useState<string[] | null>(null)
+  const [sourceId, setSourceId] = useState<string | null>(null)
   const [voiceEnabled, setVoiceEnabled] = useState(false)
-  const [loadedTimeline, setLoadedTimeline] = useState<{ graph: Graph; timeline: Timeline } | null>(null)
-  const [view, setView] = usePersistentChoice('clingraph.view', 'graph', VIEWS)
-  const [centre, setCentre] = usePersistentChoice('clingraph.centre', 'expanded', ['expanded', 'collapsed'] as const)
-  // Bumped when the chat is reset, so an answer still in flight is dropped.
+  const [typing, setTyping] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [response, setResponse] = usePersistentChoice('clingraph.response', 'hidden', ['hidden', 'shown'] as const)
+  // Bumped when the patient changes, so an answer still in flight is dropped.
   const conversation = useRef(0)
+  // The answer being streamed, so a new question or a reset can stop it.
+  const inFlight = useRef<AbortController | null>(null)
 
-  // The graph covers the processed reports, named in upload order.
-  const processed = uploads.filter((u) => u.status === 'processed').map((u) => u.file.name)
-  const graphKey = processed.length > 0 ? JSON.stringify(processed) : ''
-  const graph = graphKey ? (loaded?.graph ?? null) : null
-  const busy = uploads.some((u) => u.status === 'processing') || (graphKey !== '' && loaded?.key !== graphKey)
-  // While the next graph's timeline loads, the previous one stays on screen (under the busy
-  // overlay) so the view is not torn down and rebuilt on every upload or removal.
-  const timeline = graph ? (loadedTimeline?.timeline ?? null) : null
-  const timelineStale = graph !== null && loadedTimeline?.graph !== graph
+  const graph = patient?.record ?? null
+  const open = graph !== null && highlight !== null
 
   useEffect(() => {
-    if (!graphKey) return
-    let live = true
-    void fetchGraph(JSON.parse(graphKey) as string[]).then((next) => {
-      if (live) setLoaded({ key: graphKey, graph: next })
-    })
+    // The backend may start after the page loads: keep asking until it answers.
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let stopped = false
+    const check = async () => {
+      const enabled = await voiceStatus()
+      if (stopped) return
+      if (enabled === null) timer = setTimeout(check, VOICE_STATUS_RETRY_MS)
+      else setVoiceEnabled(enabled)
+    }
+    void check()
     return () => {
-      live = false
+      stopped = true
+      clearTimeout(timer)
     }
-  }, [graphKey])
-
-  useEffect(() => {
-    if (!graph) return
-    let live = true
-    void fetchTimeline(graph).then((next) => {
-      if (live) setLoadedTimeline({ graph, timeline: next })
-    })
-    return () => {
-      live = false
-    }
-  }, [graph])
-
-  useEffect(() => {
-    if (!graph) return
-    let live = true
-    void fetchSuggestions().then((next) => {
-      if (live) setSuggestions(next)
-    })
-    return () => {
-      live = false
-    }
-  }, [graph])
-
-  // With every report removed, start over: no graph from the previous session may reappear.
-  useEffect(() => {
-    if (uploads.length === 0) {
-      setLoaded(null)
-      setLoadedTimeline(null)
-    }
-  }, [uploads.length])
-
-  useEffect(() => {
-    void voiceStatus().then(setVoiceEnabled)
   }, [])
-
-  useEffect(() => {
-    if (!notice) return
-    const timer = window.setTimeout(() => setNotice(null), 5000)
-    return () => window.clearTimeout(timer)
-  }, [notice])
-
-  const addFiles = (files: File[]) => {
-    if (files.length === 0) return
-    const pdfs = files.filter(isPdf)
-    const fresh = pdfs.filter((file, i) => !uploads.some((u) => sameFile(u.file, file)) && pdfs.findIndex((f) => sameFile(f, file)) === i)
-    const skipped = [
-      files.length > pdfs.length && `skipped ${plural(files.length - pdfs.length, 'file')} that ${files.length - pdfs.length === 1 ? 'is' : 'are'} not PDF`,
-      pdfs.length > fresh.length && `${plural(pdfs.length - fresh.length, 'report')} already uploaded`,
-    ].filter(Boolean)
-    setNotice(skipped.length ? { id: nextId('notice'), text: `Only new PDF reports are added: ${skipped.join(', ')}.` } : null)
-    if (fresh.length === 0) return
-
-    const batch: Upload[] = fresh.map((file) => ({ id: nextId('report'), file, status: 'processing' }))
-    const ids = new Set(batch.map((u) => u.id))
-    setUploads((current) => [...current, ...batch])
-    void processReports(fresh).then(() => {
-      setUploads((current) => current.map((u) => (ids.has(u.id) ? { ...u, status: 'processed' } : u)))
-    })
-  }
 
   const speech = useSpeech()
 
-  // Removing a report rebuilds the graph and renames report nodes, so earlier answers would cite
-  // the wrong files: the conversation starts over.
-  const removeUpload = (id: string) => {
-    setUploads((current) => current.filter((u) => u.id !== id))
+  /**
+   * Asks a question about the patient. Each sentence of the answer is read aloud as soon as it
+   * arrives; once the answer is complete the graph highlights what it is about. A new question
+   * drops the last.
+   */
+  const askQuestion = async (question: string, spoken: boolean) => {
+    const turn = conversation.current
+    speech.stop()
+    if (!graph) return
+    inFlight.current?.abort()
+    const request = new AbortController()
+    inFlight.current = request
+    const live = () => turn === conversation.current && !request.signal.aborted
+    const aloud = voiceEnabled
+    const history = historyOf(messages)
+    const id = nextId('answer')
+    let said = 0
+    const show = (answer: Answer) => {
+      setPending(false)
+      setMessages((current) =>
+        current.some((m) => m.id === id) ? current.map((m) => (m.id === id ? { id, role: 'assistant', answer } : m)) : [...current, { id, role: 'assistant', answer }],
+      )
+      if (!aloud) return
+      for (; said < answer.sentences.length; said++) speech.say(id, speakable(answer.sentences[said]))
+    }
+    setMessages((current) => [...current, { id: nextId('question'), role: 'user', text: question, spoken, at: new Date() }])
+    setPending(true)
+    const answer = await ask(
+      question,
+      graph,
+      history,
+      (sentences) => {
+        if (!live()) return
+        if (said === 0) mark('first sentence')
+        show({ sentences, sources: [], highlight: [] })
+      },
+      request.signal,
+    )
+    if (!live()) return
+    inFlight.current = null
+    show(answer)
+    if (aloud) speech.finish(id)
+    setHighlight(answer.highlight)
+  }
+
+  /** Asks the question an answer that was cut short belongs to, again. */
+  const retry = (message: AnswerMessage) => {
+    const index = messages.indexOf(message)
+    const question = messages.slice(0, index).findLast((m) => m.role === 'user')
+    if (question?.role === 'user') void askQuestion(question.text, question.spoken)
+  }
+
+  const voiceInput = useVoiceInput((text) => void askQuestion(text, true))
+
+  /** Back to the search: everything about the previous patient goes. */
+  const clearPatient = () => {
     conversation.current += 1
+    inFlight.current?.abort()
+    setPatient(null)
     setMessages([])
     setPending(false)
-    setFocus(null)
+    setHighlight(null)
+    setSourceId(null)
+    setTyping(false)
     speech.reset()
     voiceInput.cancel()
   }
 
-  /** Asks a question; answers to spoken questions are read aloud. */
-  const askQuestion = async (question: string, spoken = false) => {
-    const turn = conversation.current
+  const phase = voicePhase({ ready: graph !== null, input: voiceInput.state, pending, loading: speech.loadingId !== null, playing: speech.playingId !== null })
+  const busy = phase === 'transcribing' || phase === 'thinking'
+  const talking = phase === 'preparing' || phase === 'speaking'
+  const lastQuestion = messages.findLast((m) => m.role === 'user')
+  const error = voiceInput.error ?? speech.error
+  // Without voice the text is the only answer there is.
+  const showThread = open && (response === 'shown' || !voiceEnabled)
+  const showInput = typing || !voiceEnabled
+
+  const onPill = () => {
+    if (talking) return speech.stop()
+    if (voiceInput.state === 'recording') return voiceInput.stop()
     speech.stop()
-    if (!graph) return
-    const history = historyOf(messages)
-    setMessages((current) => [...current, { id: nextId('question'), role: 'user', text: question, spoken }])
-    setPending(true)
-    const answer = await ask(question, graph, history)
-    if (turn !== conversation.current) return
-    const id = nextId('answer')
-    setMessages((current) => [...current, { id, role: 'assistant', answer }])
-    setPending(false)
-    if (answer.highlight.length > 0) setFocus({ kind: 'answer', messageId: id, ids: answer.highlight })
-    if (spoken && voiceEnabled) void speech.play(id, speechText(answer))
+    speech.unlock()
+    speech.clearError()
+    void voiceInput.start()
   }
 
-  const voiceInput = useVoiceInput((text) => void askQuestion(text, true))
-  const voice: VoiceControls = {
-    enabled: voiceEnabled,
-    input: voiceInput.state,
-    playingId: speech.playingId,
-    loadingId: speech.loadingId,
-    error: voiceInput.error ?? speech.error,
-    level: voiceInput.level,
-    onCancel: voiceInput.cancel,
-    onMic: () => {
-      if (voiceInput.state === 'recording') return voiceInput.stop()
-      speech.stop()
-      speech.unlock()
-      speech.clearError()
-      void voiceInput.start()
-    },
-    onPlay: (message) => {
-      speech.unlock()
-      voiceInput.clearError()
-      void speech.play(message.id, speechText(message.answer))
-    },
-    onStop: speech.stop,
+  const submit = () => {
+    const text = draft.trim()
+    if (!text || busy || voiceInput.state !== 'idle') return
+    speech.unlock()
+    setDraft('')
+    void askQuestion(text, false)
   }
-
-  const carriesFiles = (event: DragEvent) => event.dataTransfer.types.includes('Files')
 
   return (
-    <div
-      className="app"
-      onDragOver={(event) => {
-        if (!carriesFiles(event)) return
-        event.preventDefault()
-        setDragging(true)
-      }}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false)
-      }}
-      onDrop={(event) => {
-        if (!carriesFiles(event)) return
-        event.preventDefault()
-        setDragging(false)
-        addFiles([...event.dataTransfer.files])
-      }}
-    >
-      <header>
-        <div className="brand">
-          Clin<span>Graph</span> AI
-        </div>
-        <p className="tagline">From medical reports to a connected patient history</p>
-      </header>
-      <main className={`workspace${centre === 'collapsed' ? ' centre-collapsed' : ''}`}>
-        <ReportsPanel uploads={uploads} notice={notice} onAdd={addFiles} onRemove={removeUpload} />
-        <CentrePanel
-          graph={graph}
-          timeline={timeline}
-          busy={busy || timelineStale}
-          focus={focus}
-          onFocus={setFocus}
-          view={view}
-          onView={setView}
-          collapsed={centre === 'collapsed'}
-          onCollapsed={(collapsed) => setCentre(collapsed ? 'collapsed' : 'expanded')}
-        />
-        <ChatPanel
-          graph={graph}
-          reportCount={processed.length}
-          suggestions={suggestions}
-          messages={messages}
-          pending={pending}
-          focus={focus}
-          onAsk={(question) => void askQuestion(question)}
-          onFocus={setFocus}
-          voice={voice}
-        />
+    <div className={open ? 'app open' : 'app'}>
+      <main className="stage" aria-label="Knowledge graph" aria-hidden={!open}>
+        {open && graph && (
+          <>
+            <GraphView graph={graph} highlight={highlight} onSelect={setSourceId} />
+            <Legend />
+          </>
+        )}
       </main>
-      {dragging && (
-        <div className="drop-hint" aria-hidden="true">
-          Drop PDF reports to add them
+
+      <aside className="side">
+        <header className="brand">
+          <Logo />
+          <span>ClinGraph</span>
+        </header>
+
+        <div className="voice">
+          {!patient && (
+            <div className="intro">
+              <h1>Every report, one patient, one graph.</h1>
+              <p>Ask about a patient's history out loud. ClinGraph answers from their reports and shows you where each answer came from.</p>
+            </div>
+          )}
+
+          {patient ? (
+            <div className="patient">
+              <span className="name">{patient.name}</span>
+              <span className="mono">{patient.insurance}</span>
+              <button type="button" className="clear" aria-label="Choose another patient" title="Choose another patient" onClick={clearPatient}>
+                ✕
+              </button>
+            </div>
+          ) : (
+            <PatientSearch patients={PATIENTS} onPick={setPatient} />
+          )}
+
+          {patient && !graph && <p className="note">No reports connected for this patient yet.</p>}
+
+          {patient && graph && !open && patient.timeline.length > 0 && <HistoryTimeline stops={patient.timeline} onOpen={setSourceId} />}
+
+          {graph && (
+            <>
+              <button
+                type="button"
+                className={`pill ${phase}`}
+                disabled={busy || !voiceEnabled}
+                aria-pressed={phase === 'listening'}
+                aria-label={talking ? 'Stop speaking' : phase === 'listening' ? 'Stop recording and ask' : 'Ask by voice'}
+                onClick={onPill}
+              >
+                <ParticlePill mode={pillMode(phase)} level={() => voiceInput.level() / LOUD / 6} count={open ? 6000 : 12000} scale={open ? 0.7 : 0.8} />
+              </button>
+              <p className="status" aria-live="polite">
+                {voiceEnabled ? phaseStatus(phase, firstName(patient!), messages.length > 0) : 'VOICE IS OFF · TYPE YOUR QUESTION'}
+              </p>
+              {phase === 'listening' && (
+                <button type="button" className="link" onClick={voiceInput.cancel}>
+                  Cancel
+                </button>
+              )}
+              {lastQuestion?.role === 'user' && phase !== 'listening' && <p className="heard">“{lastQuestion.text}”</p>}
+              {error && (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              )}
+            </>
+          )}
         </div>
-      )}
+
+        {showThread && <Thread messages={messages} pending={pending} graph={graph!} onSource={setSourceId} onRetry={retry} />}
+
+        {graph && (
+          <footer className="controls">
+            {showInput && (
+              <form
+                className="ask"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  submit()
+                }}
+              >
+                <input
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape' && voiceEnabled) setTyping(false)
+                  }}
+                  placeholder={`Ask about ${firstName(patient!)}…`}
+                  aria-label="Question"
+                  autoFocus={voiceEnabled}
+                />
+                <span className="mono key" aria-hidden="true">
+                  ↵
+                </span>
+              </form>
+            )}
+            <div className="toggles">
+              {open && voiceEnabled && (
+                <label className="check">
+                  <input type="checkbox" checked={response === 'shown'} onChange={(event) => setResponse(event.target.checked ? 'shown' : 'hidden')} />
+                  Show model response
+                </label>
+              )}
+              {voiceEnabled && (
+                <button
+                  type="button"
+                  className={typing ? 'icon on' : 'icon'}
+                  aria-label={typing ? 'Close the text box' : 'Type a question instead'}
+                  title={typing ? 'Close the text box' : 'Type a question instead'}
+                  onClick={() => setTyping(!typing)}
+                >
+                  <KeyboardIcon />
+                </button>
+              )}
+            </div>
+          </footer>
+        )}
+      </aside>
+
+      {graph && <SourceModal graph={graph} sources={SOURCES} nodeId={sourceId} onClose={() => setSourceId(null)} onSelect={setSourceId} />}
     </div>
+  )
+}
+
+function KeyboardIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="1.5" y="3.5" width="13" height="9" rx="2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M4 6.5h1M7.5 6.5h1M11 6.5h1M4 9.5h8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
   )
 }

@@ -1,6 +1,8 @@
 # ClinGraph AI · v1
 
-Upload a patient's PDF reports, explore them as a knowledge graph and ask questions about the patient's history, typed or by voice.
+Find a patient, tap the pill and ask about their history out loud. ClinGraph answers by voice from the patient's reports and opens their knowledge graph with what the answer is about highlighted; click any highlighted item to see the report sentence it came from.
+
+> **Demo data.** For the demo the reports are taken as already uploaded (or connected from an external source), so there is no upload. The patients, the knowledge graph and the report excerpts are hardcoded in `frontend/src/demo/data.ts`. The record is the synthetic urology case in the five demo PDFs (Martin Keller, SYN-URO-001, January to March 2026: a 6 mm left ureteric stone, stented, then treated by ureteroscopy), and the pop-up quotes follow the PDFs' wording. Changing the case means changing that file only; keep its shapes and IDs.
 
 ## Run
 
@@ -18,40 +20,45 @@ Both install dependencies when needed, start the backend (voice and answers) on 
 
 ### Voice (ElevenLabs)
 
-Copy `.env.example` to `.env` (git-ignored) and set `ELEVENLABS_API_KEY`. The key stays in the backend; the browser never sees it. With voice on, the chat panel is voice first: an animated orb is the microphone. Without a key, or without the backend, the orb and listen buttons are hidden and the panel is a plain typed chat.
+Copy `.env.example` to `.env` (git-ignored) and set `ELEVENLABS_API_KEY`. The key stays in the backend; the browser never sees it. Without a key, or without the backend, the pill can't listen: questions are typed and the answers are shown as text.
 
-- **The orb:** large while the conversation is empty, with suggested questions below it; after the first question it docks to a bar under the conversation. It swells with your voice while listening, stirs faster while transcribing and answering, and glows while speaking. Tap it to ask, tap again to send, tap while it speaks to stop. **Type a question instead** (or the keyboard icon in the bar) opens a text input; Esc closes it.
-- **Ask by voice:** tap the orb, ask your question, and pause. Recording stops by itself after about 1.5 s of quiet (or tap **Send**; **Cancel** throws it away), is transcribed with ElevenLabs Scribe (`scribe_v3`, English) and sent as the question.
-- **Answers aloud:** answers to spoken questions are read out with ElevenLabs text-to-speech (`eleven_multilingual_v2`). Every answer has a **Listen** button to play or stop it.
+- **The pill:** a 3D particle capsule (the ClinGraph mark) that is the microphone. It breathes at rest, swells with your voice while listening, pulses while working and sends a wave along itself while speaking. Tap it to ask, tap again to send, tap while it speaks to stop. The keyboard icon opens a text box as a fallback; Esc closes it.
+- **Ask by voice:** tap the pill, ask your question, and pause. Recording stops by itself after about 0.8 s of quiet, with a soft chime (or tap the pill; **Cancel** throws it away), is transcribed with ElevenLabs Scribe (`scribe_v3`, English) and sent as the question.
+- **Answers aloud:** every answer is read out with ElevenLabs text-to-speech (`eleven_multilingual_v2`), a sentence at a time: the first sentence plays while the rest are still being written and synthesised. The text is hidden unless **Show model response** is ticked; the question it heard is always shown under the pill.
+- **Speed:** the browser console logs each spoken turn (`[voice] transcribed / first sentence / first audio`, in ms from the end of the recording) and the backend logs each stage. The backend keeps one connection to ElevenLabs open and warms up the voice and the LLM at start.
 - **Voice:** Nathaniel C, "Calm Medical Support Agent" from the ElevenLabs Voice Library (`eIYyt1GDV2CYz5Ccyam2`), unless `ELEVENLABS_VOICE_ID` is set. If that library voice is ever withdrawn, the first voice on your account is used. The backend sends one tiny warm-up request at start, because a library voice's first request can take several seconds.
-- **Why these:** chosen by benchmarking the app's own answers on 8 voices and 5 models (latency, plus a speech-to-text round trip scoring the clinical wording). All models pronounced the clinical terms clearly; `eleven_multilingual_v2` returns a full answer in about 1 s, `eleven_flash_v2_5` in about 0.5 s with plainer delivery, and `eleven_v4`/`eleven_v3` take 3.5-4 s. `scribe_v3` transcribed every test question word for word.
+- **Why these:** chosen by benchmarking the app's own answers on 8 voices and 5 models (latency, plus a speech-to-text round trip scoring the clinical wording). All models pronounced the clinical terms clearly; `eleven_multilingual_v2` speaks a one-line answer in about 0.5 s on a warm connection, `eleven_flash_v2_5` starts about 0.3 s sooner with plainer delivery, and `eleven_v4`/`eleven_v3` take 3.5-4 s. `scribe_v3` transcribed every test question word for word.
 - The key needs access to speech-to-text and text-to-speech (and reading voices for the fallback). Each question and each spoken answer uses ElevenLabs credits.
 
 ### Answers (LLM through LangChain)
 
-The suggested questions have scripted answers that appear at once. Any other question, typed or spoken, goes to `/api/ask` with the graph on screen and the last few turns, and an LLM answers from that record only: one to four short lines, each citing its reports, plus the items to highlight. Citations and highlights the graph doesn't have are dropped.
+The suggested questions have scripted answers that appear at once. Any other question, typed or spoken, goes to `/api/ask` with the graph on screen and the last few turns, and an LLM answers from that record only, the way a colleague would brief you: the direct answer first, then the detail that matters, in one to three short sentences. The same words are shown (as a short paragraph, with the source reports below) and spoken. Highlights the graph doesn't have are dropped.
 
-- Set `FIREWORKS_API_KEY` in `.env`. The model is `LLM_MODEL` (`provider:model` for LangChain's `init_chat_model`); empty means GLM 5.3 Flash on Fireworks AI, `fireworks:accounts/fireworks/models/glm-5p3-flash`. For DeepSeek V4.1 Flash set `LLM_MODEL=fireworks:accounts/deepseek-ai/models/deepseek-v4p1-flash`. Another provider works too once its LangChain package is installed (for example `langchain-openai`) and its key is set.
-- The answer is asked for as JSON-schema structured output. If a model wraps its JSON in reasoning or code fences, the backend still reads it.
+- Set `FIREWORKS_API_KEY` in `.env`. The model is `LLM_MODEL` (`provider:model` for LangChain's `init_chat_model`); empty means DeepSeek V4.1 Flash (1017) on Fireworks AI, `fireworks:accounts/fireworks/models/deepseek-v4p1-flash-1017`. For GLM 5.3 Flash set `LLM_MODEL=fireworks:accounts/fireworks/models/glm-5p3-flash`. Another provider works too once its LangChain package is installed (for example `langchain-openai`) and its key is set.
+- The answer streams: the model writes one sentence per line and a final `HIGHLIGHT:` line naming the nodes the answer is about (the reports among them are its sources), and `/api/ask` sends each sentence on as NDJSON as soon as it is complete. If the model fails partway, the sentences so far stay with a note that the answer was cut short.
+- Reasoning is off (`reasoning_effort="none"`): the first sentence arrives about 0.7 s sooner and the answers were as good.
 - Without a key the backend logs "LLM answers are off" and free questions get the fallback answer; the suggested questions still work.
+
+## Deploy (Vercel)
+
+`vercel.json` builds the interface into `frontend/dist` and serves the backend as one Python function (`api/index.py`) for every `/api` route. In the Vercel project settings add the environment variables `ELEVENLABS_API_KEY` and `FIREWORKS_API_KEY` (optionally `LLM_MODEL`, `ELEVENLABS_VOICE_ID`), then deploy with `npx vercel --prod` or by importing the GitHub repo. The backend only answers its own deployment domain (from Vercel's `VERCEL_*` variables) and localhost; add others to `ALLOWED_HOSTS` (comma-separated). Anyone who can open the URL spends your ElevenLabs and Fireworks credits, so keep the link private or turn on Vercel's deployment protection.
 
 ## What v1 does
 
-- **Reports (left):** upload one or more PDFs with the button or by dropping them anywhere on the page. Each file shows its size and a processing → processed status, and can be removed (which starts a new conversation, since the graph changes). Non-PDF files and duplicates are skipped with a notice.
-- **Centre:** two tabs, **Knowledge graph** and **Clinical timeline**, with a spinner while reports are processed. The collapse button (top right) folds the whole centre panel into a narrow strip so reports and chat get the room; click the strip to bring it back. The open tab and the collapsed state are remembered in the browser.
-  - **Knowledge graph:** the patient's reports, findings and their states over time, diagnoses, procedures and medications. Pan, zoom and drag nodes; click a node to highlight its neighbourhood and see its properties and source reports.
-  - **Clinical timeline:** the same history on a date axis. Each report is a dashed tick labelled with its file name and date. Every finding has a lane showing how it changed at each report (New, Progressed, Stable, Improved, each with its own colour and glyph; Documented where a report mentions it without a change), followed by lanes for diagnoses, procedures and therapy (a bar per medication; ongoing ones run to the end). Hover or focus an item for its details; click it to highlight what it is connected to and open its details below. The selection is shared with the graph.
-- **Chat (right):** once the graph is shown, suggested questions appear; any other question is answered by the LLM (see Answers). Each answer cites its source reports and highlights the items it is about in both the graph and the timeline.
+- **Landing:** the ClinGraph mark, two sentences on what it does, and a patient search. Type a name or the start of an insurance number; arrows and Enter (or a click) pick a patient. Only Martin Keller (try "martin" or "K417") has reports connected; the others say so.
+- **History at a glance:** once a patient is picked, a horizontal timeline shows one stop per report (Stone found, Stent placed, Discharged, Stone removed, Recovered). Hover or focus a stop for what happened; click it to open the report. It gives way to the graph after the first answer.
+- **Ask:** under the timeline the pill appears with "Tap to ask about Martin's history". The first answer opens the knowledge graph across three quarters of the screen and moves the pill to the column on the right.
+- **Knowledge graph:** greyscale, with entity type shown by shape (legend bottom left). What the latest answer is about, nodes and the relationships between them, is drawn in blue with labels and framed in view; everything else fades to its shape (hover for its name). An answer with nothing specific to show leaves the whole graph at normal strength.
+- **Sources:** click any node for a pop-up with its details and every report it comes from: the report's kind, department and date, the quoted sentence the node was read from, and what else that report documents (click to follow). A report shows everything it documents; the patient shows all their reports.
+- **Right column:** the patient (✕ goes back to the search), the pill and its status, the question it heard, the conversation as text when **Show model response** is on (with source links), and the typed fallback.
 
-The interface uses Google Sans (SIL Open Font License), bundled through `@fontsource-variable/google-sans`, so no font requests go to Google.
-
-The voice orb is FluidOrb from [Rare UI](https://rareui.com) by Swami Malode, adapted in `frontend/src/components/FluidOrb.tsx` (MIT + Commons Clause + Attribution; the notice is kept in that file).
+Designed for a 16:9 laptop or projector (1440×900, 1920×1080; works from 1280 wide). The look is the light version of `mockup/DESIGN.md`: Inter and Departure Mono (both SIL Open Font License, self-hosted; no font requests to Google), cool greys and one accent blue.
 
 ## Not connected yet
 
-PDFs never leave the browser and are not parsed: the graph is a synthetic fixture (`frontend/src/graph/fixture.ts`) whose five report nodes take the uploaded file names in upload order, and the suggested questions' answers are scripted (`frontend/src/chat/script.ts`). Other questions are answered by the LLM over that same fixture graph (`backend/answers.py`), or get a fallback answer when no model is configured.
+There is no upload or PDF parsing: the patients, graph and report excerpts are the demo data in `frontend/src/demo/data.ts`, and the four suggested questions keep scripted answers (`frontend/src/chat/script.ts`) if asked word for word. Every other question is answered by the LLM over the patient's graph (`backend/answers.py`), or gets a fallback answer when no model is configured.
 
-Everything the UI needs goes through `frontend/src/api.ts`. Connecting PDF parsing, graph building and graph querying means replacing `processReports`, `fetchGraph` and `fetchSuggestions` (`ask` already sends whatever graph is shown); the `Graph` shape is defined in `frontend/src/graph/types.ts`. `fetchTimeline` derives the timeline from the graph (`frontend/src/graph/timeline.ts`: report dates, observation `Change`/`Date`, procedure `Date`, medication `Started`/`Stopped`), so it follows any graph of that shape; a backend can return a `Timeline` instead as long as its node IDs match the graph's. The voice functions there already call the backend (`backend/`).
+The `Graph` shape is defined in `frontend/src/graph/types.ts`; `frontend/src/api.ts` is the seam to the backend (`ask` sends whatever graph is shown, and the voice functions call `backend/`). Connecting real records means filling the same `Patient`, `Graph` and `ReportSource` shapes from a backend instead of the demo file.
 
 ## Checks
 

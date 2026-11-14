@@ -1,8 +1,9 @@
+import type { PillMode } from '../components/ParticlePill'
 import type { InputState } from './useVoiceInput'
 
 /**
  * The one state the voice assistant is in, folded from the microphone, the pending answer and
- * the speech player. The orb, its status line and its buttons all follow from this.
+ * the speech player. The pill, its caption and what tapping it does all follow from this.
  */
 export type VoicePhase = 'waiting' | 'idle' | 'listening' | 'transcribing' | 'thinking' | 'preparing' | 'speaking'
 
@@ -27,33 +28,33 @@ export function voicePhase({ ready, input, pending, loading, playing }: PhaseInp
   return 'idle'
 }
 
-/** Status line under (or beside) the orb. `docked` once a conversation has started. */
-export function phaseStatus(phase: VoicePhase, docked: boolean): string {
+/**
+ * The status caption under the pill, in capitals. `name` is the patient's first name; `followUp`
+ * once a question has been answered.
+ */
+export function phaseStatus(phase: VoicePhase, name: string, followUp: boolean): string {
   switch (phase) {
     case 'waiting':
-      return 'Waiting for reports…'
+      return 'NO REPORTS CONNECTED'
     case 'idle':
-      return docked ? 'Tap to ask a follow-up' : "Tap to ask about this patient's history"
+      return followUp ? 'TAP TO ASK A FOLLOW-UP' : `TAP TO ASK ABOUT ${name.toUpperCase()}'S HISTORY`
     case 'listening':
-      return "Listening… pause when you're done"
+      return 'LISTENING · PAUSE WHEN DONE'
     case 'transcribing':
-      return 'Transcribing…'
+      return 'TRANSCRIBING'
     case 'thinking':
-      return 'Checking the reports…'
+      return 'READING THE REPORTS'
     case 'preparing':
-      return 'Preparing audio…'
+      return 'PREPARING VOICE'
     case 'speaking':
-      return 'Speaking…'
+      return 'SPEAKING · TAP TO STOP'
   }
 }
 
-/** How fast the orb's fluid moves: calm at rest, stirred while working. */
-export const PHASE_SPEED: Record<VoicePhase, number> = {
-  waiting: 0.35,
-  idle: 1,
-  listening: 1.6,
-  transcribing: 2.8,
-  thinking: 2.8,
-  preparing: 2.8,
-  speaking: 1.8,
+/** How the pill moves in each phase. */
+export function pillMode(phase: VoicePhase): PillMode {
+  if (phase === 'listening') return 'listening'
+  if (phase === 'speaking') return 'speaking'
+  if (phase === 'transcribing' || phase === 'thinking' || phase === 'preparing') return 'thinking'
+  return 'idle'
 }

@@ -7,12 +7,14 @@ the API keys stay out of the browser. Run: uvicorn backend.main:app --port 8000
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .answers import Answerer, AnswerError, AskRequest, load_answerer
@@ -23,6 +25,14 @@ MAX_AUDIO_BYTES = 10 * 1024 * 1024
 MAX_TEXT_CHARS = 2500
 AUDIO_TYPES = ("audio/", "video/webm")  # Some browsers label MediaRecorder output video/webm.
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+# Vercel sets these to the deployment's own domains.
+VERCEL_HOST_VARS = ("VERCEL_URL", "VERCEL_BRANCH_URL", "VERCEL_PROJECT_PRODUCTION_URL")
+
+
+def allowed_hosts() -> set[str]:
+    """This machine, the Vercel deployment's own domains, and any in ALLOWED_HOSTS (comma-separated)."""
+    extra = [os.environ.get(name, "") for name in VERCEL_HOST_VARS] + os.environ.get("ALLOWED_HOSTS", "").split(",")
+    return LOCAL_HOSTS | {h.strip().lower() for h in extra if h.strip()}
 log = logging.getLogger("uvicorn.error")
 
 
@@ -41,26 +51,35 @@ def create_app(settings: Settings | None = None, client: ElevenLabs | None = Non
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        task = asyncio.create_task(_warm_up(client)) if client is not None and warm_up else None
+        tasks = []
+        if warm_up and client is not None:
+            tasks.append(asyncio.create_task(_warm_up_voice(client)))
+        if warm_up and isinstance(answerer, Answerer):
+            tasks.append(asyncio.create_task(_warm_up_answers(answerer)))
         yield
-        if task is not None and not task.done():
+        for task in tasks:
             task.cancel()
+        if client is not None:
+            await client.aclose()
 
     app = FastAPI(title="ClinGraph voice", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.settings = settings
     app.state.client = client
     app.state.answerer = answerer
 
-    # Every call spends ElevenLabs credits. Browsers send Origin on cross-site POSTs, and a
-    # multipart upload needs no preflight, so refuse anything not from this machine. Requests
-    # without Origin (curl, tests) and same-machine pages on any port (Vite may move off 5173) pass.
+    # Every call spends ElevenLabs and LLM credits. Browsers send Origin on cross-site POSTs, and a
+    # multipart upload needs no preflight, so refuse anything not from this machine or this app's
+    # own deployment. Requests without Origin (curl, tests) and same-machine pages on any port
+    # (Vite may move off 5173) pass.
+    hosts = allowed_hosts()
+
     @app.middleware("http")
-    async def local_origin_only(request: Request, call_next):
+    async def own_origin_only(request: Request, call_next):
         origin = request.headers.get("origin")
-        if origin and origin != "null" and urlsplit(origin).hostname not in LOCAL_HOSTS:
-            return JSONResponse({"detail": "Requests are only accepted from this machine"}, status_code=403)
-        host = (request.headers.get("host") or "").rsplit(":", 1)[0].strip("[]")
-        if host and host not in LOCAL_HOSTS | {"testserver"}:
+        if origin and origin != "null" and (urlsplit(origin).hostname or "") not in hosts:
+            return JSONResponse({"detail": "Requests are only accepted from this app"}, status_code=403)
+        host = (request.headers.get("host") or "").rsplit(":", 1)[0].strip("[]").lower()
+        if host and host not in hosts | {"testserver"}:
             return JSONResponse({"detail": "Unexpected host"}, status_code=403)
         return await call_next(request)
 
@@ -92,40 +111,61 @@ def create_app(settings: Settings | None = None, client: ElevenLabs | None = Non
     @app.post("/api/voice/speak")
     async def speak(body: SpeakRequest, eleven: ElevenLabs = Depends(voice)) -> Response:
         try:
-            audio = await eleven.speak(body.text)
+            audio = await eleven.speak(body.text, body.previous_text)
         except ElevenLabsError as error:
             raise _upstream(error) from error
         return Response(content=audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
 
     @app.post("/api/ask")
-    async def ask(body: AskRequest, request: Request) -> dict:
+    async def ask(body: AskRequest, request: Request) -> StreamingResponse:
+        """The answer as NDJSON: a {"type": "sentence"} event per sentence, then "done" with the
+        sources and highlights, or "error" (possibly after some sentences) if the model fails or stalls."""
         answerer = request.app.state.answerer
         if answerer is None:
             raise HTTPException(503, "Answers are not configured: set LLM_MODEL and the provider's API key")
-        try:
-            return await answerer.answer(body)
-        except TimeoutError as error:
-            raise HTTPException(504, "The language model took too long to answer") from error
-        except AnswerError as error:
-            raise HTTPException(502, str(error)) from error
-        except Exception as error:  # Provider errors: auth, quota, unknown model. Details go to the log.
-            log.exception("LLM answer failed (%s)", answerer.name)
-            raise HTTPException(502, f"The language model failed ({type(error).__name__})") from error
+
+        async def events():
+            try:
+                async for event in answerer.stream(body):
+                    yield json.dumps(event) + "\n"
+            except TimeoutError:
+                yield _error("The language model took too long to answer")
+            except AnswerError as error:
+                yield _error(str(error))
+            except Exception as error:  # Provider errors: auth, quota, unknown model. Details go to the log.
+                log.exception("LLM answer failed (%s)", answerer.name)
+                yield _error(f"The language model failed ({type(error).__name__})")
+
+        return StreamingResponse(events(), media_type="application/x-ndjson", headers={"Cache-Control": "no-store"})
 
     return app
 
 
+def _error(detail: str) -> str:
+    return json.dumps({"type": "error", "detail": detail}) + "\n"
+
+
 class SpeakRequest(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_TEXT_CHARS, pattern=r"\S")
+    # What was said just before, when an answer is spoken line by line.
+    previous_text: str | None = Field(default=None, max_length=MAX_TEXT_CHARS)
 
 
-async def _warm_up(client: ElevenLabs) -> None:
+async def _warm_up_voice(client: ElevenLabs) -> None:
     try:
         await client.warm_up()
         log.info("ElevenLabs voice %s ready (%s)", client.current_voice(), client.tts_model)
     except ElevenLabsError as error:
         # Not fatal: the first answer will surface the same problem to the user.
         log.warning("ElevenLabs warm-up failed: %s", error)
+
+
+async def _warm_up_answers(answerer: Answerer) -> None:
+    try:
+        await answerer.warm_up()
+        log.info("LLM %s ready", answerer.name)
+    except Exception as error:  # Not fatal either: the first question reports it.
+        log.warning("LLM warm-up failed (%s): %s", answerer.name, type(error).__name__)
 
 
 def _upstream(error: ElevenLabsError) -> HTTPException:

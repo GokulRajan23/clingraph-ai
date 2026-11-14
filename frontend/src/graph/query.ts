@@ -39,6 +39,36 @@ export function findingStates(graph: Graph, id: string): string[] {
   return found
 }
 
+/** A report a node comes from, with the sentence in it that the node was extracted from. */
+export interface SourceEntry {
+  report: GraphNode
+  /** The quoted sentence, if the report text has one for this node (or one of its states). */
+  quote: string | undefined
+}
+
+/**
+ * Where a node comes from, for the source pop-up. A report is its own source (quoted by its
+ * summary); the patient's sources are all their reports; anything else lists the reports it is
+ * documented in, quoting the sentence about it or about one of its observed states.
+ */
+export function sourcesOf(graph: Graph, texts: Record<string, { summary: string; quotes: Record<string, string> }>, id: string): SourceEntry[] {
+  const node = nodeById(graph, id)
+  if (!node) return []
+  if (node.type === 'report') return [{ report: node, quote: texts[id]?.summary }]
+  if (node.type === 'patient') return graph.nodes.filter((n) => n.type === 'report').map((report) => ({ report, quote: texts[report.id]?.summary }))
+  const subjects = [id, ...findingStates(graph, id)]
+  return sourceReports(graph, id).map((report) => {
+    const quotes = texts[report.id]?.quotes ?? {}
+    return { report, quote: subjects.map((s) => quotes[s]).find(Boolean) }
+  })
+}
+
+/** The other clinical nodes documented in a report, in graph order. */
+export function documentedIn(graph: Graph, reportId: string, except?: string): GraphNode[] {
+  const ids = new Set(graph.edges.filter((e) => e.target === reportId && e.relation === SOURCE_RELATION).map((e) => e.source))
+  return graph.nodes.filter((n) => ids.has(n.id) && n.id !== except)
+}
+
 export function nodeById(graph: Graph, id: string): GraphNode | undefined {
   return graph.nodes.find((n) => n.id === id)
 }

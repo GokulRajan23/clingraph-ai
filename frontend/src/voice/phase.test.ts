@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { phaseStatus, voicePhase, type PhaseInputs } from './phase'
+import { phaseStatus, pillMode, voicePhase, type PhaseInputs } from './phase'
 
 const base: PhaseInputs = { ready: true, input: 'idle', pending: false, loading: false, playing: false }
 
@@ -22,8 +22,16 @@ describe('voice phase', () => {
     expect(voicePhase({ ...base, input: 'recording', playing: true })).toBe('listening')
   })
 
-  it('invites a follow-up once the conversation has started', () => {
-    expect(phaseStatus('idle', false)).toMatch(/patient's history/)
-    expect(phaseStatus('idle', true)).toBe('Tap to ask a follow-up')
+  it('invites the first question by name, then follow-ups', () => {
+    expect(phaseStatus('idle', 'Martin', false)).toBe("TAP TO ASK ABOUT MARTIN'S HISTORY")
+    expect(phaseStatus('idle', 'Martin', true)).toBe('TAP TO ASK A FOLLOW-UP')
+  })
+
+  it('moves the pill with the phase', () => {
+    expect(pillMode('listening')).toBe('listening')
+    expect(pillMode('thinking')).toBe('thinking')
+    expect(pillMode('preparing')).toBe('thinking')
+    expect(pillMode('speaking')).toBe('speaking')
+    expect(pillMode('waiting')).toBe('idle')
   })
 })

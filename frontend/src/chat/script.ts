@@ -1,19 +1,19 @@
 /**
- * Answers about the patient's history: lines of text, each citing the reports it comes from, plus
- * the graph nodes the answer is about (highlighted when the answer appears). The suggested questions
- * have scripted answers; anything else is answered by the backend's LLM (see api.ask).
+ * Answers about the patient's history, phrased the way a colleague would say them: a few sentences,
+ * shown as a short paragraph and read aloud, plus the reports they come from and the graph nodes
+ * they are about (highlighted when the answer appears). The suggested questions have scripted
+ * answers; anything else is answered by the backend's LLM (see api.ask).
  */
 
-export interface AnswerLine {
-  text: string
-  /** Report node IDs this line is grounded in. */
-  cites: string[]
-}
-
 export interface Answer {
-  lines: AnswerLine[]
+  /** What is shown and said, one sentence each. */
+  sentences: string[]
+  /** Report node IDs the answer comes from. */
+  sources: string[]
   /** Node IDs to highlight in the graph. Empty for the fallback answer. */
   highlight: string[]
+  /** The answer stopped partway (the model failed or stalled); its sentences so far are kept. */
+  cutShort?: boolean
 }
 
 export interface Suggestion {
@@ -23,57 +23,59 @@ export interface Suggestion {
 
 export const SUGGESTIONS: Suggestion[] = [
   {
-    question: 'How has the lung nodule changed over time?',
+    question: 'How has the left kidney obstruction changed?',
     answer: {
-      lines: [
-        { text: 'Feb 2022: first documented, 14 mm in the right upper lobe.', cites: ['r1'] },
-        { text: 'Jan 2023: progressed to 19 mm.', cites: ['r3'] },
-        { text: 'May 2024: unchanged at 19 mm compared with the prior examination.', cites: ['r5'] },
+      sentences: [
+        'It got worse before the stent and has now resolved.',
+        'The left side was mildly dilated on 12 January and moderately dilated by 19 January, when a stent was placed.',
+        'It was down to mild by 21 January and had resolved on the 2 March ultrasound.',
       ],
-      highlight: ['nodule', 'nodule-1', 'nodule-2', 'nodule-3', 'r1', 'r3', 'r5'],
+      sources: ['r1', 'r2', 'r3', 'r5'],
+      highlight: ['hydro', 'hydro-1', 'hydro-2', 'hydro-3', 'hydro-4', 'stent', 'r1', 'r2', 'r3', 'r5'],
     },
   },
   {
     question: 'Which procedures are documented?',
     answer: {
-      lines: [
-        { text: 'CT-guided lung biopsy (02 Mar 2022): adenocarcinoma, PD-L1 60 %.', cites: ['r2'] },
-        { text: 'Port catheter implantation (09 Mar 2022) before chemotherapy.', cites: ['r2'] },
-        { text: 'Thoracentesis, left (21 Jun 2023): 1,200 ml serous fluid drained.', cites: ['r4'] },
+      sentences: [
+        'Two procedures, both on the left side.',
+        'A double-J stent was placed on 19 January 2026 to relieve the obstruction.',
+        'On 2 February a ureteroscopy with laser lithotripsy removed the 6 mm stone, and the stent came out.',
       ],
-      highlight: ['biopsy', 'port', 'thoracentesis', 'r2', 'r4'],
+      sources: ['r2', 'r4'],
+      highlight: ['stent', 'ureteroscopy', 'left-stone', 'r2', 'r4'],
     },
   },
   {
     question: 'What changed in the latest report?',
     answer: {
-      lines: [
-        { text: 'Lung nodule stable at 19 mm.', cites: ['r5', 'r3'] },
-        { text: 'Liver lesion no longer detectable (9 mm before).', cites: ['r5', 'r3'] },
-        { text: 'Left pleural effusion resolved after thoracentesis.', cites: ['r5', 'r4'] },
+      sentences: [
+        "At the 2 March review he's recovered, and the obstruction and kidney injury have resolved.",
+        'Creatinine is back to 1.0 mg/dL, and the stone turned out to be calcium oxalate.',
+        'The 3 mm right kidney stone is unchanged and stays under surveillance.',
       ],
-      highlight: ['r5', 'r3', 'r4', 'nodule-3', 'liver-3', 'effusion', 'thoracentesis'],
+      sources: ['r5'],
+      highlight: ['r5', 'hydro-4', 'creatinine-4', 'analysis', 'right-stone-2', 'left-stone-4'],
     },
   },
   {
-    question: 'What is the current treatment?',
+    question: 'What is the current medication?',
     answer: {
-      lines: [
-        { text: 'First line: carboplatin / pemetrexed from Mar 2022.', cites: ['r2'] },
-        { text: 'Switched to pembrolizumab monotherapy in Jan 2023 after the nodule progressed; still ongoing in May 2024.', cites: ['r3', 'r5'] },
+      sentences: [
+        'Amlodipine 5 mg each morning is now his only regular medication.',
+        "Tamsulosin was stopped on 2 February, and he hasn't needed paracetamol since 5 February.",
       ],
-      highlight: ['nsclc', 'carboplatin', 'pemetrexed', 'pembrolizumab', 'r2', 'r3', 'r5'],
+      sources: ['r5'],
+      highlight: ['amlodipine', 'tamsulosin', 'paracetamol', 'r5'],
     },
   },
 ]
 
 export const FALLBACK: Answer = {
-  lines: [
-    {
-      text: "I couldn't find a confident answer to that in the uploaded reports. Try asking how a finding changed, which procedures are documented, or what the current treatment is.",
-      cites: [],
-    },
+  sentences: [
+    "I couldn't find a confident answer to that in the uploaded reports. Try asking how a finding changed, which procedures are documented, or what the current treatment is.",
   ],
+  sources: [],
   highlight: [],
 }
 
@@ -90,25 +92,63 @@ export function answerFor(question: string): Answer {
   return scriptedAnswer(question) ?? FALLBACK
 }
 
-/** A one-line answer that says what went wrong, with nothing cited or highlighted. */
+/** A one-sentence answer that says what went wrong, with no sources or highlights. */
 export function problemAnswer(text: string): Answer {
-  return { lines: [{ text, cites: [] }], highlight: [] }
+  return { sentences: [text], sources: [], highlight: [] }
 }
 
 const isStrings = (value: unknown): value is string[] => Array.isArray(value) && value.every((v) => typeof v === 'string')
 
-/** Reads an answer from the backend; null if the shape is wrong or it says nothing. */
-export function toAnswer(body: unknown): Answer | null {
-  if (typeof body !== 'object' || body === null) return null
-  const { lines, highlight } = body as { lines?: unknown; highlight?: unknown }
-  if (!Array.isArray(lines) || !isStrings(highlight)) return null
-  const parsed: AnswerLine[] = []
-  for (const line of lines) {
-    const { text, cites } = (line ?? {}) as { text?: unknown; cites?: unknown }
-    if (typeof text !== 'string' || !isStrings(cites)) return null
-    if (text.trim()) parsed.push({ text: text.trim(), cites })
+/**
+ * Reads the backend's streamed answer (NDJSON): a "sentence" event per sentence, then "done" with
+ * the sources and highlights, or "error". `onSentence` gets the sentences so far each time one
+ * arrives. If the stream fails after some sentences they are kept and the answer is marked cut
+ * short; before any, the answer says what went wrong.
+ */
+export async function readAnswer(body: ReadableStream<Uint8Array>, onSentence: (sentences: string[]) => void): Promise<Answer> {
+  const sentences: string[] = []
+  const end = (problem: string): Answer =>
+    sentences.length > 0 ? { sentences, sources: [], highlight: [], cutShort: true } : problemAnswer(`Sorry, I couldn't answer that just now. ${problem}`)
+  // One event; an Answer once the stream is over.
+  const handle = (raw: string): Answer | null => {
+    if (!raw.trim()) return null
+    let event: { type?: unknown; text?: unknown; sources?: unknown; highlight?: unknown; detail?: unknown }
+    try {
+      event = JSON.parse(raw)
+    } catch {
+      return null
+    }
+    if (event.type === 'sentence' && typeof event.text === 'string' && event.text.trim()) {
+      sentences.push(event.text.trim())
+      onSentence([...sentences])
+    } else if (event.type === 'done' && sentences.length > 0) {
+      return { sentences, sources: isStrings(event.sources) ? event.sources : [], highlight: isStrings(event.highlight) ? event.highlight : [] }
+    } else if (event.type === 'error' || event.type === 'done') {
+      return end(typeof event.detail === 'string' ? event.detail : 'The answer service failed')
+    }
+    return null
   }
-  return parsed.length > 0 ? { lines: parsed, highlight } : null
+
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  try {
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      const events = (buffer + decoder.decode(value, { stream: true })).split('\n')
+      buffer = events.pop() ?? ''
+      for (const event of events) {
+        const answer = handle(event)
+        if (answer) return answer
+      }
+    }
+  } catch {
+    return end('The connection was lost')
+  } finally {
+    void reader.cancel().catch(() => undefined)
+  }
+  return handle(buffer) ?? end('The answer stopped partway')
 }
 
 /** An earlier turn of the conversation, as context for a follow-up question. */
@@ -117,21 +157,26 @@ export interface Turn {
   text: string
 }
 
-/** The last `limit` turns of a conversation, answers flattened to their text. */
+/**
+ * The last `limit` turns of a conversation. Answers go back in the form the model wrote them (a
+ * sentence per line, then the HIGHLIGHT line): given plain text, it copies that and drops the line.
+ */
 export function historyOf(messages: ({ role: 'user'; text: string } | { role: 'assistant'; answer: Answer })[], limit = 8): Turn[] {
-  return messages.slice(-limit).map((m) => (m.role === 'user' ? { role: 'user', text: m.text } : { role: 'assistant', text: m.answer.lines.map((l) => l.text).join(' ') }))
+  return messages.slice(-limit).map((m) => (m.role === 'user' ? { role: 'user', text: m.text } : { role: 'assistant', text: modelText(m.answer) }))
 }
 
-/** The reports an answer cites, in first-cited order; line markers number into this list. */
-export function citationsOf(answer: Answer): string[] {
-  return [...new Set(answer.lines.flatMap((line) => line.cites))]
-}
+const modelText = (answer: Answer) => [...answer.sentences, `HIGHLIGHT: ${answer.highlight.join(', ')}`].join('\n')
 
 // Clinical shorthand a voice would read letter by letter.
 const SPOKEN: [RegExp, string][] = [
+  // Before a noun a size is an adjective: "a 6 mm stone" is "a 6 millimetre stone".
+  [/(\d) ?mm (?!(?:in|on|at|to|and|or|by|from|with|when|since|before|after|then|but|is|was|has|had)\b)(?=[a-z])/g, '$1 millimetre '],
   [/(\d) ?mm\b/g, '$1 millimetres'],
   [/(\d) ?ml\b/g, '$1 millilitres'],
+  [/(\d) ?mg\/dL\b/g, '$1 milligrams per decilitre'],
   [/(\d) ?mg\b/g, '$1 milligrams'],
+  [/(\d) ?Fr\b/g, '$1 French'],
+  [/\bMR\b/g, 'modified release'],
   [/(\d) ?%/g, '$1 percent'],
   [/\bq3w\b/g, 'every three weeks'],
   [/ \/ /g, ' and '],
@@ -144,9 +189,14 @@ const MONTHS: Record<string, string> = {
   Aug: 'August', Sep: 'September', Oct: 'October', Nov: 'November', Dec: 'December',
 }
 
-/** The answer as one passage to read aloud: lines joined, citations left out, units and dates spelled out. */
+/** The whole answer as one passage to read aloud. */
 export function speechText(answer: Answer): string {
-  let text = answer.lines.map((line) => line.text.trim()).join(' ')
+  return answer.sentences.map(speakable).join(' ')
+}
+
+/** A sentence as it should be read aloud: units and dates spelled out. */
+export function speakable(sentence: string): string {
+  let text = sentence.trim()
   for (const [pattern, spoken] of SPOKEN) text = text.replace(pattern, spoken)
   return text.replace(/\b(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?= \d{4})/g, (m) => MONTHS[m])
 }

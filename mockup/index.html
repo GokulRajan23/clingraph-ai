@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClinGraph</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,400..600;1,14..32,400..500&display=swap" rel="stylesheet">
+<style>
+@font-face{font-family:'DepartureMono';src:url(fonts/DepartureMono-Regular.woff2) format('woff2');font-display:swap}
+:root{
+  /* tokens taken from blog.maximeheckel.com (dark) */
+  --hue:266;
+  --bg:oklch(14.68% .01 var(--hue));            /* #070a0e-ish page */
+  --gray-200:oklch(16.75% .011 var(--hue));
+  --gray-300:oklch(17.8% .012 var(--hue));
+  --gray-400:oklch(24.84% .018 var(--hue));
+  --gray-500:oklch(28.69% .023 var(--hue));
+  --gray-700:oklch(41.6% .035 var(--hue));
+  --text-primary:oklch(93.66% .027 var(--hue));
+  --text-secondary:oklch(77.16% .028 var(--hue));
+  --text-tertiary:oklch(66.65% .04 var(--hue));
+  --accent:oklch(64.6% .172 var(--hue));
+  --brand:#0163F5;
+  --emphasis:oklch(64.6% .172 var(--hue) / 9%);
+  --font:'Inter',system-ui,sans-serif;
+  --mono:'DepartureMono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;color-scheme:dark}
+body{background:var(--bg);color:var(--text-primary);font-family:var(--font);font-feature-settings:"cv11" 1,"cv05" 1;font-variation-settings:"opsz" auto;font-size:16px;line-height:1.75;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+button,input{font:inherit;color:inherit;background:none;border:0}
+button{cursor:pointer}
+a{color:inherit;text-decoration:none}
+::selection{background:var(--brand);color:#fff}
+.mono{font-family:var(--mono)}
+
+/* ---------- nav ---------- */
+.nav{position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:50;display:flex;align-items:center;height:40px;padding:0 6px;border-radius:10px;
+  background:oklch(from var(--brand) l c h / 18%);backdrop-filter:blur(12px) saturate(1.4);-webkit-backdrop-filter:blur(12px) saturate(1.4);
+  border:1px solid oklch(85% .05 260 / 22%);transition:background .3s}
+.nav.scrolled{background:oklch(from var(--gray-300) l c h / 80%);border-color:var(--gray-400)}
+.nav .logo{display:grid;place-items:center;width:34px;height:28px;color:var(--text-primary)}
+.nav .sep{width:1px;height:20px;background:oklch(85% .05 260 / 25%);margin:0 6px}
+.nav a.l{font-size:14px;font-weight:600;color:var(--text-primary);padding:4px 10px;border-radius:6px;opacity:.88;transition:opacity .2s,background .2s}
+.nav a.l:hover{opacity:1;background:oklch(100% 0 0 / 8%)}
+
+/* ---------- hero ---------- */
+.hero{position:relative;padding-top:80px}
+.hero-bg{position:absolute;inset:0 0 auto 0;height:980px;pointer-events:none;
+  background:
+    radial-gradient(ellipse 78% 70% at 36% 28%, #0a4fc4 0%, #063f9c 30%, #043370 55%, oklch(from #042a5c l c h / 0) 88%);
+  mask-image:linear-gradient(180deg,#000 55%,transparent 100%)}
+.hero-bg::after{content:"";position:absolute;inset:0;
+  background-image:linear-gradient(oklch(80% .08 255 / 9%) 1px,transparent 1px),linear-gradient(90deg,oklch(80% .08 255 / 9%) 1px,transparent 1px);
+  background-size:28px 28px;mask-image:radial-gradient(ellipse 75% 70% at 35% 25%,#000 30%,transparent 80%)}
+.stage{position:relative;height:520px;max-width:1100px;margin:0 auto}
+#orb{position:absolute;inset:0;width:100%;height:100%;display:block}
+.orb-hint{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--text-secondary);white-space:nowrap;text-align:center;pointer-events:none;transition:color .3s}
+.orb-hint .heard{display:block;font-family:var(--font);font-size:15px;letter-spacing:0;color:var(--text-primary);margin-top:4px;min-height:1.6em;white-space:normal;max-width:80vw}
+
+.intro{position:relative;max-width:680px;margin:40px auto 0;padding:0 20px;display:grid;grid-template-columns:1fr 1fr;gap:28px}
+@media (max-width:700px){.intro{grid-template-columns:1fr;gap:12px}}
+.intro h1{font-size:24px;font-weight:500;line-height:1.25;letter-spacing:-.01em;margin-bottom:18px;color:var(--text-primary)}
+.intro p{color:var(--text-secondary);line-height:1.75}
+.intro b{color:var(--text-primary);font-weight:600}
+.intro em{font-style:italic;color:var(--text-secondary)}
+
+/* ---------- main column ---------- */
+main{max-width:680px;margin:0 auto;padding:120px 20px 0}
+section{margin-bottom:96px;scroll-margin-top:96px}
+.label{font-family:var(--mono);font-size:14px;color:var(--text-secondary);padding:0 12px;margin-bottom:28px}
+.label span{color:var(--text-tertiary)}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:20px;padding:16px 12px;border-bottom:1px solid var(--gray-400);color:var(--text-secondary);cursor:pointer;border-radius:0;transition:color .2s,background .2s;text-align:left;width:100%}
+.row:first-of-type{border-top:1px solid var(--gray-400)}
+.row:hover,.row.on{color:var(--text-primary);background:var(--emphasis)}
+.row .t{font-weight:500}
+.row .t small{display:block;font-weight:400;font-size:14px;color:var(--text-tertiary);line-height:1.5;margin-top:2px}
+.row .d{font-family:var(--mono);font-size:13px;color:var(--text-tertiary);white-space:nowrap}
+.row .tag{font-family:var(--mono);font-size:11px;padding:1px 6px;border-radius:4px;border:1px solid var(--gray-500);color:var(--text-tertiary);margin-left:6px;vertical-align:2px}
+.row .tag.up{color:oklch(75% .14 25);border-color:oklch(75% .14 25 / 40%)}
+.row .tag.down{color:oklch(80% .12 160);border-color:oklch(80% .12 160 / 40%)}
+.year{font-family:var(--mono);font-size:14px;color:var(--text-secondary);padding:40px 12px 14px}
+
+/* widget card (as in his interactive embeds) — bleeds wider than the text column */
+.widget{margin:0 -110px;background:var(--gray-200);border:1px solid var(--gray-400);border-radius:16px;overflow:hidden;position:relative}
+@media (max-width:920px){.widget{margin:0}}
+.widget-bar{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--gray-400);font-family:var(--mono);font-size:12px;color:var(--text-tertiary)}
+.widget-bar button{font-family:var(--mono);font-size:12px;color:var(--text-secondary);padding:2px 8px;border-radius:6px;border:1px solid var(--gray-500)}
+.widget-bar button:hover{color:var(--text-primary);background:var(--gray-400)}
+.g-wrap{display:grid;grid-template-columns:1fr 240px}
+@media (max-width:760px){.g-wrap{grid-template-columns:1fr}}
+#graph{width:100%;height:480px;display:block;touch-action:none;
+  background-image:radial-gradient(oklch(100% 0 0 / 7%) 1px,transparent 1px);background-size:16px 16px}
+#graph .edge{stroke:var(--gray-500);stroke-width:1}
+#graph .edge.hl{stroke:var(--accent);stroke-width:1.5}
+#graph .node{cursor:grab}
+#graph .node .s{fill:var(--gray-200);stroke:var(--text-tertiary);stroke-width:1.2;transition:fill .2s,stroke .2s}
+#graph .node.t-patient .s{fill:var(--text-primary);stroke:none}
+#graph .node.t-finding .s,#graph .node.t-diagnosis .s{fill:var(--text-secondary);stroke:none}
+#graph .node text{font-size:10.5px;fill:var(--text-tertiary);pointer-events:none;transition:fill .2s}
+#graph .node.hl .s{fill:var(--accent);stroke:var(--accent)}
+#graph .node.hl text{fill:var(--text-primary)}
+#graph.dim .node:not(.hl){opacity:.22}
+#graph.dim .edge:not(.hl){opacity:.15}
+#graph .node,#graph .edge{transition:opacity .25s}
+.inspect{border-left:1px solid var(--gray-400);padding:16px;font-size:14px;line-height:1.55}
+@media (max-width:760px){.inspect{border-left:0;border-top:1px solid var(--gray-400)}}
+.inspect .k{font-family:var(--mono);font-size:11px;color:var(--text-tertiary);text-transform:uppercase}
+.inspect h3{font-size:15px;font-weight:600;margin:4px 0 12px}
+.inspect dl{display:grid;grid-template-columns:auto 1fr;gap:4px 10px}
+.inspect dt{font-family:var(--mono);font-size:11px;color:var(--text-tertiary);padding-top:3px}
+.inspect dd{color:var(--text-secondary)}
+.inspect .src{margin-top:14px;display:flex;flex-direction:column;gap:4px}
+.inspect .src span{font-size:13px;color:var(--text-secondary)}
+.keys{display:grid;grid-template-columns:1fr 1fr;gap:6px 8px;margin-top:6px}
+.keys div{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;color:var(--text-tertiary)}
+.keys svg{flex:none}
+
+/* ask */
+.thread{display:flex;flex-direction:column;gap:22px;margin-bottom:22px}
+.thread:empty{display:none}
+.q{font-family:var(--mono);font-size:13px;color:var(--text-tertiary)}
+.q b{font-family:var(--font);font-size:16px;font-weight:500;color:var(--text-primary);display:block;margin-top:2px}
+.a p{color:var(--text-secondary);margin:4px 0}
+.a sup{font-family:var(--mono);font-size:11px;color:var(--accent);cursor:pointer;margin-left:2px}
+.a .cites{font-family:var(--mono);font-size:12px;color:var(--text-tertiary);margin-top:8px;display:flex;flex-direction:column}
+.a .acts{display:flex;gap:14px;margin-top:8px}
+.a .acts button{font-family:var(--mono);font-size:12px;color:var(--text-secondary)}
+.a .acts button:hover{color:var(--text-primary)}
+.dots::after{content:"...";font-family:var(--mono);color:var(--text-tertiary);animation:dots 1s steps(4) infinite;display:inline-block;overflow:hidden;width:0;vertical-align:bottom}
+@keyframes dots{to{width:3ch}}
+.field{display:flex;align-items:center;gap:8px;height:48px;padding:0 6px 0 16px;border-radius:12px;border:1px solid var(--gray-500);background:var(--gray-200);margin-bottom:16px;transition:border-color .2s}
+.field:focus-within{border-color:var(--accent)}
+.field input{flex:1;outline:0;min-width:0;color:var(--text-primary)}
+.field input::placeholder{color:var(--text-tertiary)}
+.field kbd{font-family:var(--mono);font-size:11px;color:var(--text-tertiary);border:1px solid var(--gray-500);padding:1px 6px;border-radius:4px}
+.mic{width:36px;height:36px;border-radius:8px;display:grid;place-items:center;color:var(--text-secondary);transition:background .2s,color .2s}
+.mic:hover{background:var(--gray-400);color:var(--text-primary)}
+.mic.on{color:#fff;background:var(--brand)}
+
+/* docked pill */
+.dock{position:fixed;left:50%;bottom:24px;z-index:60;display:flex;align-items:center;gap:10px;height:48px;padding:0 16px 0 6px;border-radius:999px;
+  background:oklch(from var(--gray-300) l c h / 82%);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid var(--gray-500);
+  transform:translate(-50%,90px);opacity:0;transition:transform .5s cubic-bezier(.2,.85,.32,1.2),opacity .3s,border-color .3s;font-family:var(--mono);font-size:12px;color:var(--text-secondary)}
+.dock.show{transform:translate(-50%,0);opacity:1}
+.dock.on{border-color:var(--accent);color:var(--text-primary)}
+.dock canvas{width:84px;height:36px;display:block}
+
+footer{max-width:680px;margin:0 auto;padding:40px 32px 140px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;font-family:var(--mono);font-size:12px;color:var(--text-tertiary);border-top:1px solid var(--gray-400)}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+
+<nav class="nav" id="nav">
+  <a class="logo" href="#top" aria-label="ClinGraph home">
+    <svg width="22" height="14" viewBox="0 0 22 14" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1" y="1" width="20" height="12" rx="6"/><path d="M11 1v12"/></svg>
+  </a>
+  <span class="sep"></span>
+  <a class="l" href="#graph-sec">Graph</a>
+  <a class="l" href="#history">History</a>
+  <a class="l" href="#ask">Ask</a>
+</nav>
+
+<header class="hero" id="top">
+  <div class="hero-bg"></div>
+  <div class="stage" id="stage">
+    <canvas id="orb" aria-label="Voice assistant. Click to speak." role="button" tabindex="0"></canvas>
+    <div class="orb-hint" id="hint">TAP THE PILL TO ASK<span class="heard"></span></div>
+  </div>
+  <div class="intro">
+    <div>
+      <h1>Every report, one patient,<br>one graph.</h1>
+      <p>Hi Doctor. ClinGraph reads the <b>CT reports, discharge letters and procedure notes</b> for a patient and links them into a single <b>knowledge graph</b> you can question out loud.</p>
+    </div>
+    <p>Five reports for <b>PT-20871</b> are loaded. Tap the pill and ask <em>how the nodule changed, what was done, or what she is on now</em>. Every answer names the report it came from, so you can check it before you act on it.</p>
+  </div>
+</header>
+
+<main>
+  <section id="graph-sec">
+    <div class="label">Knowledge graph <span>· 24 entities · 40 links</span></div>
+    <div class="widget">
+      <div class="widget-bar"><span>pt-20871.graph</span><button id="resetGraph">Reset</button></div>
+      <div class="g-wrap">
+        <svg id="graph"></svg>
+        <aside class="inspect" id="inspect"></aside>
+      </div>
+    </div>
+  </section>
+
+  <section id="ask">
+    <div class="label">Ask <span>· typed or spoken</span></div>
+    <div class="thread" id="thread"></div>
+    <form class="field" id="form">
+      <input id="q" placeholder="Ask about this patient…" autocomplete="off">
+      <kbd>↵</kbd>
+      <button type="button" class="mic" id="mic" aria-label="Ask by voice">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
+    </form>
+    <div id="sugs"></div>
+  </section>
+
+  <section id="history">
+    <div class="label">Patient history</div>
+    <div id="hist"></div>
+  </section>
+</main>
+
+<footer><span>ClinGraph · draft</span><span>Synthetic data · not for clinical use</span></footer>
+
+<button class="dock" id="dock" aria-label="Ask by voice"><canvas id="mini"></canvas><span id="dockLabel">TAP TO ASK</span></button>
+
+<script>
+/* ================= DATA (DOKU fixture.ts + chat/script.ts) ================= */
+const N=[
+ ['patient','patient','PT-20871 · 64 y, female',[['Patient ID','PT-20871'],['Born','1960'],['Reports','5']]],
+ ['r1','report','CT thorax/abdomen',[['Kind','CT report'],['Date','10 Feb 2022'],['Dept.','Radiology']]],
+ ['r2','report','Discharge summary',[['Kind','Discharge summary'],['Date','28 Mar 2022'],['Dept.','Pulmonology']]],
+ ['r3','report','Follow-up CT',[['Kind','CT report'],['Date','17 Jan 2023'],['Dept.','Radiology']]],
+ ['r4','report','Procedure report',[['Kind','Procedure report'],['Date','21 Jun 2023'],['Dept.','Thoracic surgery']]],
+ ['r5','report','Follow-up CT ',[['Kind','CT report'],['Date','14 May 2024'],['Dept.','Radiology']]],
+ ['nodule','finding','Pulmonary nodule, RUL',[['Site','Right upper lobe'],['Course','Progressed, then stable']]],
+ ['liver','finding','Liver lesion, seg. VI',[['Site','Liver, segment VI'],['Course','Improved, then not detectable']]],
+ ['lymph','finding','Mediastinal lymph node',[['Site','Station 4R'],['Size','11 mm short axis']]],
+ ['effusion','finding','Pleural effusion, left',[['Site','Left pleural space'],['Course','Drained, then resolved']]],
+ ['nodule-1','observation','14 mm',[['Change','First documented'],['Size','14 mm'],['Date','10 Feb 2022']]],
+ ['nodule-2','observation','19 mm',[['Change','Progressed'],['Size','19 mm'],['Date','17 Jan 2023']]],
+ ['nodule-3','observation','19 mm, stable',[['Change','Stable'],['Size','19 mm'],['Date','14 May 2024']]],
+ ['liver-1','observation','15 mm',[['Change','First documented'],['Size','15 mm, hypodense'],['Date','10 Feb 2022']]],
+ ['liver-2','observation','9 mm',[['Change','Improved'],['Size','9 mm'],['Date','17 Jan 2023']]],
+ ['liver-3','observation','not detectable',[['Change','Improved'],['Size','Not detectable'],['Date','14 May 2024']]],
+ ['nsclc','diagnosis','Lung adenocarcinoma',[['Status','Confirmed by histology'],['ICD-10','C34.1'],['Stage','cT1b N2 M1b']]],
+ ['mets','diagnosis','Liver metastasis',[['Status','Suspected, radiological'],['ICD-10','C78.7']]],
+ ['biopsy','procedure','CT-guided biopsy',[['Date','02 Mar 2022'],['Result','Adenocarcinoma, PD-L1 60 %']]],
+ ['port','procedure','Port catheter',[['Date','09 Mar 2022'],['Site','Right subclavian vein']]],
+ ['thoracentesis','procedure','Thoracentesis',[['Date','21 Jun 2023'],['Volume','1,200 ml serous fluid']]],
+ ['carboplatin','medication','Carboplatin',[['Regimen','Carboplatin / pemetrexed'],['Started','Mar 2022'],['Stopped','Jan 2023']]],
+ ['pemetrexed','medication','Pemetrexed',[['Regimen','Carboplatin / pemetrexed'],['Started','Mar 2022'],['Stopped','Jan 2023']]],
+ ['pembrolizumab','medication','Pembrolizumab',[['Regimen','200 mg q3w'],['Started','Jan 2023'],['Status','Ongoing']]],
+].map(([id,type,label,props])=>({id,type,label,props}));
+const byId=Object.fromEntries(N.map(n=>[n.id,n]));
+const E=[...['r1','r2','r3','r4','r5'].map(r=>['patient',r]),['patient','nsclc'],['patient','mets'],
+ ['nodule','nodule-1'],['nodule-1','nodule-2'],['nodule-2','nodule-3'],['nodule-1','r1'],['nodule-2','r3'],['nodule-3','r5'],
+ ['liver','liver-1'],['liver-1','liver-2'],['liver-2','liver-3'],['liver-1','r1'],['liver-2','r3'],['liver-3','r5'],
+ ['lymph','r1'],['effusion','r3'],['effusion','r4'],['effusion','r5'],
+ ['nsclc','nodule'],['nsclc','lymph'],['nsclc','biopsy'],['nsclc','r2'],['mets','liver'],['mets','r2'],
+ ['biopsy','r2'],['port','r2'],['thoracentesis','effusion'],['thoracentesis','r4'],
+ ['nsclc','carboplatin'],['nsclc','pemetrexed'],['nsclc','pembrolizumab'],['carboplatin','r2'],['pemetrexed','r2'],
+ ['carboplatin','r3'],['pemetrexed','r3'],['pembrolizumab','r3'],['pembrolizumab','r5']].map(([s,t])=>({s,t}));
+const SUG=[
+ {q:'How has the lung nodule changed over time?',kw:/nodule|lung|tumou?r|size|grow/i,
+  lines:[['Feb 2022: first documented, 14 mm in the right upper lobe.',['r1']],['Jan 2023: progressed to 19 mm.',['r3']],['May 2024: unchanged at 19 mm compared with the prior examination.',['r5']]],
+  hl:['nodule','nodule-1','nodule-2','nodule-3','r1','r3','r5']},
+ {q:'Which procedures are documented?',kw:/procedure|biopsy|surgery|intervention|done/i,
+  lines:[['CT-guided lung biopsy (02 Mar 2022): adenocarcinoma, PD-L1 60 %.',['r2']],['Port catheter implantation (09 Mar 2022) before chemotherapy.',['r2']],['Thoracentesis, left (21 Jun 2023): 1,200 ml serous fluid drained.',['r4']]],
+  hl:['biopsy','port','thoracentesis','r2','r4']},
+ {q:'What changed in the latest report?',kw:/latest|recent|last|new|changed/i,
+  lines:[['Lung nodule stable at 19 mm.',['r5','r3']],['Liver lesion no longer detectable (9 mm before).',['r5','r3']],['Left pleural effusion resolved after thoracentesis.',['r5','r4']]],
+  hl:['r5','r3','r4','nodule-3','liver-3','effusion','thoracentesis']},
+ {q:'What is the current treatment?',kw:/treat|therap|medic|drug|chemo|immuno|on now/i,
+  lines:[['First line: carboplatin / pemetrexed from Mar 2022.',['r2']],['Switched to pembrolizumab monotherapy in Jan 2023 after the nodule progressed; still ongoing in May 2024.',['r3','r5']]],
+  hl:['nsclc','carboplatin','pemetrexed','pembrolizumab','r2','r3','r5']},
+];
+const FALLBACK={lines:[["I couldn't find a confident answer to that in the uploaded reports. Try asking how a finding changed, which procedures are documented, or what the current treatment is.",[]]],hl:[]};
+const HIST=[
+ ['2024',[['r5','Follow-up CT','Nodule stable at 19 mm · liver lesion not detectable · effusion resolved','May 14',[['stable',''],['improved','down']]]]],
+ ['2023',[['r4','Procedure report','Left thoracentesis, 1,200 ml serous fluid drained','Jun 21',[['procedure','']]],
+          ['r3','Follow-up CT','Nodule 14 → 19 mm · liver lesion 15 → 9 mm · new left effusion','Jan 17',[['progressed','up'],['improved','down']]],
+          ['pembrolizumab','Therapy switch','Carboplatin / pemetrexed stopped, pembrolizumab 200 mg q3w started','Jan',[['therapy','']]]]],
+ ['2022',[['r2','Discharge summary','NSCLC confirmed by biopsy, PD-L1 60 % · port implanted · chemo started','Mar 28',[['diagnosis','']]],
+          ['r1','CT thorax/abdomen','14 mm RUL nodule · 15 mm liver lesion · 11 mm lymph node 4R','Feb 10',[['new','']]]]],
+];
+
+const $=s=>document.querySelector(s);
+const svgEl=(t,a={})=>{const e=document.createElementNS('http://www.w3.org/2000/svg',t);for(const k in a)e.setAttribute(k,a[k]);return e};
+const neighbours=id=>new Set([id,...E.filter(e=>e.s===id||e.t===id).flatMap(e=>[e.s,e.t])]);
+
+/* ================= SELECTION shared by graph, history, answers ================= */
+let selected=null;
+function highlight(ids){
+  const set=ids?new Set(ids):null;
+  document.querySelectorAll('#graph .node').forEach(g=>g.classList.toggle('hl',!!set&&set.has(g.dataset.id)));
+  document.querySelectorAll('#graph .edge').forEach(l=>l.classList.toggle('hl',!!set&&set.has(l.dataset.s)&&set.has(l.dataset.t)));
+  document.querySelectorAll('#hist .row').forEach(r=>r.classList.toggle('on',!!set&&set.has(r.dataset.id)));
+  $('#graph').classList.toggle('dim',!!set);
+}
+function select(id){selected=id;highlight(id?[...neighbours(id)]:null);inspect(id)}
+
+/* ================= GRAPH ================= */
+const SHAPE={
+ patient:r=>svgEl('circle',{r:9}),
+ report:()=>svgEl('rect',{x:-6,y:-7.5,width:12,height:15,rx:1.5}),
+ finding:()=>svgEl('circle',{r:7}),
+ observation:()=>svgEl('circle',{r:3.5}),
+ diagnosis:()=>svgEl('path',{d:'M0 -8 L8 0 L0 8 L-8 0Z'}),
+ procedure:()=>svgEl('path',{d:'M0 -7 L7 5 L-7 5Z'}),
+ medication:()=>svgEl('rect',{x:-8,y:-4,width:16,height:8,rx:4}),
+};
+const G=$('#graph'),gE=svgEl('g'),gN=svgEl('g');G.append(gE,gN);
+let W=0,H=480,alpha=1,drag=null,moved=false;
+const sim=N.map(n=>({...n,x:0,y:0,vx:0,vy:0}));const S=Object.fromEntries(sim.map(n=>[n.id,n]));
+const lines=E.map(e=>{const l=svgEl('line',{class:'edge'});l.dataset.s=e.s;l.dataset.t=e.t;gE.append(l);return l});
+const nodes=sim.map(n=>{const g=svgEl('g',{class:'node t-'+n.type});g.dataset.id=n.id;const s=SHAPE[n.type]();s.setAttribute('class','s');
+  const t=svgEl('text',{x:n.type==='observation'?7:12,y:3.5});t.textContent=n.type==='patient'?'PT-20871':n.label;g.append(s,t);gN.append(g);return g});
+function size(){W=G.clientWidth;H=G.clientHeight;G.setAttribute('viewBox',`0 0 ${W} ${H}`)}
+function step(){
+  for(let i=0;i<sim.length;i++)for(let j=i+1;j<sim.length;j++){const a=sim[i],b=sim[j];let dx=b.x-a.x,dy=b.y-a.y,d2=dx*dx+dy*dy||1,d=Math.sqrt(d2),f=4200/d2*alpha;dx/=d;dy/=d;a.vx-=dx*f;a.vy-=dy*f;b.vx+=dx*f;b.vy+=dy*f}
+  E.forEach(e=>{const a=S[e.s],b=S[e.t];let dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy)||1,f=(d-62)*.04*alpha;dx/=d;dy/=d;a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f});
+  sim.forEach(n=>{n.vx+=(W/2-n.x)*.006*alpha;n.vy+=(H/2-n.y)*.01*alpha;if(n!==drag){n.x+=n.vx;n.y+=n.vy}n.vx*=.6;n.vy*=.6;n.x=Math.max(14,Math.min(W-80,n.x));n.y=Math.max(14,Math.min(H-14,n.y))});
+  alpha*=.985;
+}
+function paint(){lines.forEach((l,i)=>{const a=S[E[i].s],b=S[E[i].t];l.setAttribute('x1',a.x);l.setAttribute('y1',a.y);l.setAttribute('x2',b.x);l.setAttribute('y2',b.y)});nodes.forEach((g,i)=>g.setAttribute('transform',`translate(${sim[i].x.toFixed(1)},${sim[i].y.toFixed(1)})`))}
+function seed(){size();sim.forEach((n,i)=>{const a=i/sim.length*6.283;n.x=W/2+Math.cos(a)*W*.3;n.y=H/2+Math.sin(a)*H*.3;n.vx=n.vy=0});alpha=1;for(let k=0;k<260;k++)step();paint()}
+(function loop(){if(alpha>.003){step();paint()}requestAnimationFrame(loop)})();
+nodes.forEach((g,i)=>g.addEventListener('pointerdown',e=>{drag=sim[i];moved=false;G.setPointerCapture(e.pointerId);e.stopPropagation()}));
+G.addEventListener('pointermove',e=>{if(!drag)return;const r=G.getBoundingClientRect();drag.x=e.clientX-r.left;drag.y=e.clientY-r.top;moved=true;alpha=Math.max(alpha,.25);paint()});
+G.addEventListener('pointerup',()=>{if(drag&&!moved)select(selected===drag.id?null:drag.id);drag=null});
+G.addEventListener('click',e=>{if(e.target===G)select(null)});
+$('#resetGraph').onclick=()=>{select(null);seed()};
+function inspect(id){
+  const el=$('#inspect');
+  if(!id){el.innerHTML=`<div class="k">Legend</div><div class="keys">${['patient','report','finding','observation','diagnosis','procedure','medication'].map(t=>{const s=SHAPE[t]();s.setAttribute('fill',t==='patient'||t==='finding'||t==='diagnosis'?'currentColor':'none');s.setAttribute('stroke','currentColor');return `<div><svg width="18" height="18" viewBox="-9 -9 18 18">${s.outerHTML}</svg>${t}</div>`}).join('')}</div>
+    <p style="color:var(--text-tertiary);margin-top:16px;font-size:13px">Drag nodes. Click one to see what it links to and which reports mention it.</p>`;return}
+  const n=byId[id],reps=[...neighbours(id)].filter(x=>byId[x].type==='report'&&x!==id);
+  el.innerHTML=`<div class="k">${n.type}</div><h3>${n.label}</h3><dl>${n.props.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+   ${reps.length?`<div class="src"><div class="k">Sources</div>${reps.map(r=>`<span>${byId[r].label.trim()} · ${byId[r].props[1][1]}</span>`).join('')}</div>`:''}`;
+}
+window.addEventListener('resize',()=>{size();alpha=Math.max(alpha,.3)});
+
+/* ================= HISTORY (year list) ================= */
+$('#hist').innerHTML=HIST.map(([y,rows])=>`<div class="year">${y}</div>`+rows.map(([id,t,sub,d,tags])=>
+  `<button class="row" data-id="${id}"><span class="t">${t}${tags.map(([l,c])=>`<span class="tag ${c}">${l}</span>`).join('')}<small>${sub}</small></span><span class="d">${d}</span></button>`).join('')).join('');
+$('#hist').onclick=e=>{const r=e.target.closest('.row');if(!r)return;select(r.dataset.id);$('#graph-sec').scrollIntoView()};
+
+/* ================= ASK ================= */
+const thread=$('#thread');
+$('#sugs').innerHTML=SUG.map((s,i)=>`<button class="row" data-i="${i}"><span class="t">${s.q}</span><span class="d">ASK</span></button>`).join('');
+$('#sugs').onclick=e=>{const b=e.target.closest('.row');if(b)ask(SUG[b.dataset.i].q,false)};
+$('#form').onsubmit=e=>{e.preventDefault();const v=$('#q').value.trim();if(v){ask(v,false);$('#q').value=''}};
+const match=q=>SUG.find(s=>s.q.toLowerCase()===q.toLowerCase().trim())||SUG.find(s=>s.kw.test(q))||FALLBACK;
+function ask(q,voice){
+  const qa=document.createElement('div');
+  qa.innerHTML=`<div class="q">${voice?'SPOKEN':'TYPED'} · ${new Date().toTimeString().slice(0,5)}<b>${q.replace(/</g,'&lt;')}</b></div><div class="a"><p class="dots">Reading 5 reports</p></div>`;
+  thread.append(qa);qa.scrollIntoView({block:'nearest',behavior:'smooth'});
+  orb.set('thinking');
+  setTimeout(()=>{
+    const a=match(q),cites=[...new Set(a.lines.flatMap(l=>l[1]))];
+    qa.querySelector('.a').innerHTML=a.lines.map(([t,c])=>`<p>${t}${c.map(r=>`<sup data-r="${r}">[${cites.indexOf(r)+1}]</sup>`).join('')}</p>`).join('')+
+      (cites.length?`<div class="cites">${cites.map((r,i)=>`<span>[${i+1}] ${byId[r].label.trim()} · ${byId[r].props[1][1]}</span>`).join('')}</div>`:'')+
+      `<div class="acts"><button class="listen">Listen</button>${a.hl.length?'<button class="show">Show in graph</button>':''}</div>`;
+    qa.querySelector('.listen').onclick=()=>speak(a);
+    const sh=qa.querySelector('.show');if(sh)sh.onclick=()=>{highlight(a.hl);$('#graph-sec').scrollIntoView()};
+    qa.querySelectorAll('sup').forEach(s=>s.onclick=()=>{select(s.dataset.r);$('#graph-sec').scrollIntoView()});
+    if(a.hl.length){selected=null;highlight(a.hl);inspect(null)}
+    voice?speak(a):orb.set('idle');
+  },voice?700:900);
+}
+function spoken(a){let t=a.lines.map(l=>l[0]).join(' ');
+  [[/(\d) ?mm\b/g,'$1 millimetres'],[/(\d) ?ml\b/g,'$1 millilitres'],[/(\d) ?mg\b/g,'$1 milligrams'],[/(\d) ?%/g,'$1 percent'],[/ \/ /g,' and '],[/\b0(\d) /g,'$1 ']].forEach(([p,r])=>t=t.replace(p,r));
+  return t.replace(/\b(Jan|Feb|Mar|Jun)(?= \d{4})/g,m=>({Jan:'January',Feb:'February',Mar:'March',Jun:'June'})[m])}
+function speak(a){
+  if(!('speechSynthesis' in window)){orb.set('idle');return}
+  speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(spoken(a));
+  const v=speechSynthesis.getVoices().find(v=>/^en-(GB|US)/.test(v.lang)&&/Daniel|Samantha|Google UK|Natural/i.test(v.name));if(v)u.voice=v;
+  orb.set('speaking');u.onend=u.onerror=()=>orb.set('idle');speechSynthesis.speak(u);
+}
+
+/* ================= PARTICLE PILL (stands in for the infinity) ================= */
+function ParticlePill(canvas,{count,scale,pixelate}){
+  const ctx=canvas.getContext('2d');const P=[];
+  const h=1.5,r=.62; // capsule half-length, radius
+  const cylA=2*Math.PI*r*2*h,capA=4*Math.PI*r*r;
+  for(let i=0;i<count;i++){
+    let x,y,z,nx,ny,nz;const th=Math.random()*6.283;
+    if(Math.random()<cylA/(cylA+capA)){x=(Math.random()*2-1)*h;ny=Math.cos(th);nz=Math.sin(th);nx=0}
+    else{const u=Math.random()*2-1,s=Math.sqrt(1-u*u);nx=Math.abs(u)*(Math.random()<.5?-1:1);ny=s*Math.cos(th);nz=s*Math.sin(th);x=Math.sign(nx)*h}
+    const halo=Math.random()<.12;const off=r*(1+(halo?Math.abs(gauss())*.35:gauss()*.035));
+    P.push({x0:x,nx,ny,nz,off,seed:Math.random()*100,tint:Math.random()<.035?1:Math.random()<.035?2:0,halo});
+  }
+  function gauss(){return Math.sqrt(-2*Math.log(Math.random()+1e-9))*Math.cos(6.283*Math.random())}
+  let w=0,hh=0,dpr=1;
+  function resize(){dpr=Math.min(devicePixelRatio||1,2);w=canvas.clientWidth;hh=canvas.clientHeight;canvas.width=w*dpr;canvas.height=hh*dpr}
+  resize();addEventListener('resize',resize);
+  const tints=['155,162,178','236,168,190','130,170,255'];
+  return function draw(t,level,mode){
+    if(canvas.clientWidth!==w)resize();
+    ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,hh);
+    const S=Math.min(w*scale,hh*1.05)/(h+r)*.5,cx=w/2,cy=hh/2+Math.sin(t*.6)*6*(scale>.2?1:.3);
+    const spin=t*.25,ry=.28+Math.sin(t*.2)*.1,rz=-.14+Math.sin(t*.3)*.04;
+    const cs=Math.cos(spin),ss=Math.sin(spin),cy_=Math.cos(ry),sy=Math.sin(ry),cz=Math.cos(rz),sz=Math.sin(rz);
+    const pixStart=w*.64;
+    const styles=tints.map(c=>Array.from({length:11},(_,i)=>`rgba(${c},${i/10})`));
+    for(const p of P){
+      // voice deformation along the surface normal
+      let d=Math.sin(p.x0*3+t*1.2+p.seed)*.012;
+      if(mode==='listening')d+=level*(.18*Math.sin(p.seed*7+t*9)+.12*Math.sin(p.x0*6-t*7));
+      else if(mode==='speaking')d+=level*.22*Math.sin(p.x0*5-t*10)*(.6+.4*Math.sin(p.seed));
+      else if(mode==='thinking')d+=.05*Math.sin(t*4+p.x0*2);
+      const rad=p.off+d+(p.halo?level*.25:0);
+      let x=p.nx?p.x0+p.nx*rad:p.x0,y=p.ny*rad,z=p.nz*rad;
+      // spin around long axis
+      let y1=y*cs-z*ss,z1=y*ss+z*cs;
+      // tilt (y-axis) then roll (z-axis)
+      let x2=x*cy_+z1*sy,z2=-x*sy+z1*cy_;
+      let x3=x2*cz-y1*sz,y3=x2*sz+y1*cz;
+      const persp=3.6/(3.6+z2);
+      let sx=cx+x3*S*persp,sy2=cy+y3*S*persp;
+      const depth=(z2+1.6)/3.2; // 0 near .. 1 far
+      let a=(1-depth)*.7+.25;if(p.halo)a*=.5;
+      let sz2=(1.6-depth*.7)*(scale>.2?1:.8);
+      if(pixelate&&sx>pixStart){const k=Math.min(1,(sx-pixStart)/(w*.22));if((p.seed%1)<k*.9){const g=3+Math.round(k*4);sx=Math.round(sx/g)*g;sy2=Math.round(sy2/g)*g;sz2=g-1;a*=.9}}
+      ctx.fillStyle=styles[p.tint][Math.min(10,Math.round(a*10))];
+      ctx.fillRect(sx,sy2,sz2,sz2);
+    }
+  };
+}
+const orb=(()=>{
+  const big=ParticlePill($('#orb'),{count:15000,scale:.8,pixelate:true});
+  const small=ParticlePill($('#mini'),{count:900,scale:.92,pixelate:false});
+  let mode='idle',level=0,target=0,analyser=null,stream=null,rec=null,simT=null,buf=new Uint8Array(256);
+  const hint=$('#hint'),dock=$('#dock'),mic=$('#mic');
+  const HINT={idle:'TAP THE PILL TO ASK',listening:'LISTENING',thinking:'READING REPORTS',speaking:'SPEAKING · TAP TO STOP'};
+  function set(m){mode=m;hint.firstChild.textContent=HINT[m];$('#dockLabel').textContent=HINT[m].split(' ·')[0].replace('TAP THE PILL TO ASK','TAP TO ASK');
+    dock.classList.toggle('on',m!=='idle');mic.classList.toggle('on',m==='listening');if(m==='idle'){heard('');stopMic()}}
+  const heard=t=>hint.querySelector('.heard').textContent=t;
+  async function startMic(){try{stream=await navigator.mediaDevices.getUserMedia({audio:true});const ac=new(window.AudioContext||window.webkitAudioContext)();analyser=ac.createAnalyser();analyser.fftSize=512;ac.createMediaStreamSource(stream).connect(analyser);analyser._ac=ac}catch(e){analyser=null}}
+  function stopMic(){stream?.getTracks().forEach(t=>t.stop());stream=null;analyser?._ac.close();analyser=null;if(rec){try{rec.abort()}catch(e){}rec=null}clearTimeout(simT)}
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  function toggle(){
+    if(mode==='speaking'){speechSynthesis.cancel();set('idle');return}
+    if(mode==='listening'){rec?rec.stop():set('idle');return}
+    if(mode==='thinking')return;
+    set('listening');heard('');startMic();
+    if(SR){rec=new SR();rec.lang='en-US';rec.interimResults=true;let fin='';
+      rec.onresult=e=>{let t='';for(const r of e.results){t+=r[0].transcript;if(r.isFinal)fin=t}heard('“'+t+'”')};
+      rec.onerror=e=>{if(/not-allowed/.test(e.error)){rec=null;demo()}else set('idle')};
+      rec.onend=()=>{if(!rec)return;rec=null;fin?deliver(fin):mode==='listening'&&set('idle')};
+      try{rec.start()}catch(e){rec=null;demo()}}
+    else demo();
+  }
+  function demo(){const q=SUG[Math.floor(Math.random()*SUG.length)].q;let i=0;
+    const st=()=>{if(mode!=='listening')return;i+=2;heard('“'+q.slice(0,i)+'”');simT=setTimeout(i<q.length?st:()=>deliver(q),i<q.length?45:500)};simT=setTimeout(st,600)}
+  function deliver(q){stopMic();heard('“'+q+'”');set('thinking');setTimeout(()=>{$('#ask').scrollIntoView({behavior:'smooth'});ask(q,true)},500)}
+  // click only counts on the pill itself, not the whole stage
+  const cv=$('#orb');
+  const onPill=e=>{const r=cv.getBoundingClientRect();const dx=(e.clientX-r.left-r.width/2)/(r.width*.36),dy=(e.clientY-r.top-r.height/2)/(r.height*.36);return dx*dx+dy*dy<1};
+  cv.addEventListener('click',e=>onPill(e)&&toggle());
+  cv.addEventListener('mousemove',e=>cv.style.cursor=onPill(e)?'pointer':'default');
+  cv.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggle()}});
+  dock.onclick=toggle;mic.onclick=toggle;
+  new IntersectionObserver(([en])=>dock.classList.toggle('show',!en.isIntersecting),{threshold:.2}).observe(cv);
+  let t0=performance.now(),bigVisible=true;
+  new IntersectionObserver(([en])=>bigVisible=en.isIntersecting).observe(cv);
+  (function frame(now){
+    const t=(now-t0)/1000;
+    if(analyser){analyser.getByteTimeDomainData(buf);let s=0;for(const v of buf){const d=(v-128)/128;s+=d*d}target=Math.min(1,Math.sqrt(s/buf.length)*6)}
+    else target=mode==='listening'?.35+.2*Math.sin(t*3):mode==='speaking'?.45+.4*Math.abs(Math.sin(t*5)*Math.sin(t*1.7)):0;
+    level+=(target-level)*.15;
+    if(bigVisible)big(t,level,mode);else small(t,level,mode);
+    requestAnimationFrame(frame);
+  })(t0);
+  return {set,toggle};
+})();
+
+/* nav state on scroll, like the reference */
+addEventListener('scroll',()=>$('#nav').classList.toggle('scrolled',scrollY>400),{passive:true});
+
+/* boot */
+seed();inspect(null);speechSynthesis?.getVoices();
+</script>
+</body>
+</html>

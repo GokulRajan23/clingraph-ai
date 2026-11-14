@@ -96,6 +96,21 @@ def test_speak_returns_mp3_from_configured_voice(client: TestClient, fake: FakeE
     payload = json.loads(request.read())
     assert payload["text"] == "Lung nodule stable at 19 millimetres."
     assert payload["model_id"] == "tts-model"
+    assert "previous_text" not in payload
+
+
+def test_speak_passes_what_was_said_before(client: TestClient, fake: FakeElevenLabs) -> None:
+    client.post("/api/voice/speak", json={"text": "Still on it.", "previous_text": "Pembrolizumab from Jan 2023."})
+    assert json.loads(fake.requests[0].read())["previous_text"] == "Pembrolizumab from Jan 2023."
+
+
+def test_one_connection_serves_every_request(fake: FakeElevenLabs) -> None:
+    eleven = ElevenLabs(api_key=KEY, voice_id="voice-123", transport=httpx.MockTransport(fake))
+    client = TestClient(create_app(settings(), eleven, warm_up=False))
+    client.post("/api/voice/speak", json={"text": "one"})
+    first = eleven._http
+    client.post("/api/voice/transcribe", files={"audio": ("a.webm", b"x", "audio/webm")})
+    assert first is not None and eleven._http is first
 
 
 @pytest.mark.parametrize("text", ["", "   ", "x" * 2501])
@@ -237,3 +252,12 @@ def test_auth_errors_keep_elevenlabs_reason(client: TestClient, fake: FakeEleven
     fake.status = 401
     detail = client.post("/api/voice/speak", json={"text": "hello"}).json()["detail"]
     assert "remaining credits" in detail and "Quota exceeded" in detail
+
+
+def test_the_deployments_own_domain_is_allowed(fake: FakeElevenLabs, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VERCEL_PROJECT_PRODUCTION_URL", "clingraph.vercel.app")
+    eleven = ElevenLabs(api_key=KEY, transport=httpx.MockTransport(fake))
+    client = TestClient(create_app(settings(), eleven, warm_up=False))
+    own = {"Host": "clingraph.vercel.app", "Origin": "https://clingraph.vercel.app"}
+    assert client.get("/api/voice/status", headers=own).status_code == 200
+    assert client.get("/api/voice/status", headers={**own, "Origin": "https://evil.example"}).status_code == 403

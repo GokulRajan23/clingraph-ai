@@ -1,31 +1,37 @@
-"""Answers questions about the patient's knowledge graph with an LLM.
+"""Answers questions about the patient's knowledge graph with an LLM, streamed sentence by sentence.
 
 The model is whatever LangChain's `init_chat_model` makes of LLM_MODEL ("provider:model", e.g.
-"fireworks:accounts/fireworks/models/glm-5p3-flash"); the provider reads its own key from the
+"fireworks:accounts/fireworks/models/deepseek-v4p1-flash-1017"); the provider reads its own key from the
 environment (FIREWORKS_API_KEY for Fireworks). The frontend sends the graph it shows with every
-question, so the answer cites the same report IDs and highlights the same nodes the UI knows.
+question, so the answer's sources and highlights are nodes the UI knows.
+
+The model answers like a colleague, one sentence per line, then one "HIGHLIGHT: ..." line naming
+the nodes the answer is about; the reports among them are its sources. Each sentence is sent on as
+soon as it is complete, so the first can be spoken while the rest are still being written.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import re
+import time
+from collections.abc import AsyncIterator
 from typing import Any, Literal, Protocol
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
 log = logging.getLogger("uvicorn.error")
 
-DEFAULT_LLM_MODEL = "fireworks:accounts/fireworks/models/glm-5p3-flash"
-# Room for a reasoning model to think before its short answer.
-MAX_TOKENS = 4096
+DEFAULT_LLM_MODEL = "fireworks:accounts/fireworks/models/deepseek-v4p1-flash-1017"
+# Measured 2026-11-14: without reasoning the first line arrives ~0.7 s sooner, and the answers
+# were as good.
+REASONING_EFFORT = "none"
+MAX_TOKENS = 1024
 TIMEOUT_S = 45.0
-MAX_LINES = 5
+MAX_SENTENCES = 5
 REPORT = "report"
-SOURCE_RELATION = "documented_in"
 
 
 # What the frontend sends.
@@ -61,31 +67,28 @@ class AskRequest(BaseModel):
     history: list[Turn] = Field(default_factory=list, max_length=12)
 
 
-# What the model must return; the same shape as the frontend's Answer.
+SYSTEM = """You are a clinical colleague briefing a doctor about one patient, by voice. Your only source is the patient record below: a knowledge graph built from the patient's medical reports.
 
-
-class AnswerLine(BaseModel):
-    text: str = Field(description="One short fact as a plain sentence that reads well aloud.")
-    cites: list[str] = Field(description="IDs of the report nodes this line is taken from.")
-
-
-class GraphAnswer(BaseModel):
-    lines: list[AnswerLine] = Field(description="One to four lines answering the question.")
-    highlight: list[str] = Field(description="IDs of the graph nodes the answer is about, including the cited reports.")
-
-
-SYSTEM = """You answer a clinician's questions about one patient. Your only source is the patient record below: a knowledge graph built from the patient's medical reports.
-
-How to answer:
+Facts:
 - Use only facts in the record. Never guess, never add outside medical knowledge, and do not recommend treatment.
-- Answer in one to four short lines, one fact per line, as plain sentences with no markdown. The answer is read aloud, so keep it brief and natural.
-- Give dates as in the record (for example "14 May 2024") and keep units ("19 mm").
-- Each line cites, in "cites", the IDs of the report nodes it comes from. A node's reports are the targets of its documented_in relations; an observation's report is the one with the same date.
-- "highlight" lists the IDs of every node the answer is about, plus the reports it cites.
-- If the record does not answer the question, say so in a single line with empty cites and an empty highlight.
-- The question may be a speech transcript: allow for misheard words (for example "pembro" for pembrolizumab) and short follow-ups that refer to earlier turns.
+- If the record does not answer the question, say so plainly in one sentence (for example "I don't see a blood type anywhere in her reports.").
 
-Reply with only a JSON object of this shape: {"lines": [{"text": "...", "cites": ["r1"]}], "highlight": ["r1"]}
+How to talk:
+- Answer the question directly in your first sentence, then add only the detail that matters, connected the way you would tell it at handover. One to three sentences in all.
+- Keep every sentence short enough to say in one breath, about 20 words at most. Split rather than chain clauses with semicolons, and keep the first sentence the shortest.
+- Speak naturally: vary your sentences, link events ("then", "after that", "when the nodule grew"), and do not start every sentence the same way. No greetings, no "Sure", no "Based on the record", no offers to say more.
+- Refer to the patient as she or her (or he or him, as the record says).
+- Keep clinical terms and drug names, but write shorthand out in words: "every three weeks" not "q3w", "right upper lobe" not "RUL".
+- Dates: say the month and year ("in March 2022"); give the exact day only when the question is about timing. Keep units as numbers ("19 mm").
+- Follow-up questions build on the conversation so far: do not repeat what was already said.
+- The question may be a speech transcript: allow for misheard words (for example "pembro" for pembrolizumab).
+
+Format: plain text, no markdown, one sentence per line. Then one last line: "HIGHLIGHT:" and the comma-separated IDs of the nodes the answer is about, including the report nodes the facts come from (a node's reports are the targets of its documented_in relations; an observation's report is the one with the same date).
+
+Example, for a different patient:
+The thyroid nodule hasn't changed, it's been 12 mm on every scan since June 2021.
+It was last measured in April 2024, with no new findings.
+HIGHLIGHT: thyroid-nodule, thyroid-nodule-1, thyroid-nodule-3, r1, r4
 
 Patient record:
 """
@@ -109,30 +112,56 @@ def build_messages(request: AskRequest) -> list[BaseMessage]:
     return messages
 
 
-def clean(answer: GraphAnswer, graph: Graph) -> dict[str, Any]:
-    """Keeps only what the UI can show: citations of real reports, highlights of real nodes."""
-    ids = {node.id for node in graph.nodes}
-    reports = {node.id for node in graph.nodes if node.type == REPORT}
-    lines = []
-    for line in answer.lines[:MAX_LINES]:
-        text = " ".join(line.text.split())
-        if text:
-            lines.append({"text": text, "cites": list(dict.fromkeys(c for c in line.cites if c in reports))})
-    cited = [c for line in lines for c in line["cites"]]
-    highlight = list(dict.fromkeys([h for h in answer.highlight if h in ids] + cited))
-    return {"lines": lines, "highlight": highlight}
+_BRACKETS = re.compile(r"\s*\[[^\[\]]*\]")
+_BULLET = re.compile(r"^(?:[-*•]|\d+[.)])\s+")
+_HIGHLIGHT = re.compile(r"^\W*highlight\W*:(.*)$", re.IGNORECASE)
 
 
-_THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
+class SentenceReader:
+    """Reads the model's text, fed in chunks, into sentences and the nodes the answer is about.
 
+    Only real nodes are highlighted; the reports among them are the sources. Bullets, stray
+    citation brackets, blank lines and anything past MAX_SENTENCES are dropped.
+    """
 
-def parse_text(text: str) -> GraphAnswer:
-    """Recovers the answer from raw model text: drops reasoning tags and code fences, reads the JSON object."""
-    text = _THINK.sub("", text)
-    start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end <= start:
-        raise ValueError("No JSON object in the model's reply")
-    return GraphAnswer.model_validate(json.loads(text[start : end + 1]))
+    def __init__(self, graph: Graph) -> None:
+        self._nodes = {node.id: node.type for node in graph.nodes}
+        self._buffer = ""
+        self.highlight: list[str] = []
+        self.sentences: list[str] = []
+
+    @property
+    def sources(self) -> list[str]:
+        return [i for i in self.highlight if self._nodes[i] == REPORT]
+
+    def feed(self, chunk: str) -> list[str]:
+        """Adds model text; returns the sentences it completed."""
+        self._buffer += chunk
+        # Some models think aloud in <think>...</think> first: hold that back, then drop it.
+        if self._buffer.lstrip().startswith("<think>"):
+            if "</think>" not in self._buffer:
+                return []
+            self._buffer = self._buffer.split("</think>", 1)[1]
+        *complete, self._buffer = self._buffer.split("\n")
+        return [sentence for raw in complete if (sentence := self._read(raw))]
+
+    def finish(self) -> list[str]:
+        """The last sentence, if the model did not end it with a newline."""
+        rest, self._buffer = self._buffer, ""
+        sentence = self._read(rest)
+        return [sentence] if sentence else []
+
+    def _read(self, raw: str) -> str | None:
+        text = raw.strip().strip("`").strip()
+        if match := _HIGHLIGHT.match(text):
+            ids = [part.strip() for part in match.group(1).strip(" []").split(",")]
+            self.highlight = list(dict.fromkeys(self.highlight + [i for i in ids if i in self._nodes]))
+            return None
+        text = " ".join(_BULLET.sub("", _BRACKETS.sub("", text)).split())
+        if not text or len(self.sentences) >= MAX_SENTENCES:
+            return None
+        self.sentences.append(text)
+        return text
 
 
 class AnswerError(Exception):
@@ -140,40 +169,44 @@ class AnswerError(Exception):
 
 
 class ChatModel(Protocol):
-    def with_structured_output(self, schema: Any, **kwargs: Any) -> Any: ...
+    def astream(self, messages: Any) -> AsyncIterator[Any]: ...
+    async def ainvoke(self, messages: Any) -> Any: ...
 
 
 class Answerer:
     def __init__(self, model: ChatModel, name: str) -> None:
         self.name = name
-        # include_raw: a parse failure comes back with the raw reply instead of raising, so an
-        # open model that wraps its JSON in reasoning or fences can still be read.
-        self._structured = model.with_structured_output(GraphAnswer, method="json_schema", include_raw=True)
+        self._model = model
 
-    async def answer(self, request: AskRequest) -> dict[str, Any]:
-        result = await asyncio.wait_for(self._structured.ainvoke(build_messages(request)), TIMEOUT_S)
-        parsed = result.get("parsed")
-        if not isinstance(parsed, GraphAnswer):
-            raw = result.get("raw")
-            try:
-                parsed = parse_text(_text_of(raw))
-            except (ValueError, ValidationError) as error:
-                log.warning("Unusable answer from %s: %s", self.name, result.get("parsing_error") or error)
-                raise AnswerError("The language model did not return a usable answer") from error
-        answer = clean(parsed, request.graph)
-        if not answer["lines"]:
+    async def stream(self, request: AskRequest) -> AsyncIterator[dict[str, Any]]:
+        """Yields {"type": "sentence", "text"} as sentences complete, then {"type": "done", "sources", "highlight"}."""
+        reader = SentenceReader(request.graph)
+        start = time.perf_counter()
+        first: float | None = None
+        async with asyncio.timeout(TIMEOUT_S):
+            async for chunk in self._model.astream(build_messages(request)):
+                for sentence in reader.feed(_text_of(chunk)):
+                    first = first or time.perf_counter() - start
+                    yield {"type": "sentence", "text": sentence}
+        for sentence in reader.finish():
+            first = first or time.perf_counter() - start
+            yield {"type": "sentence", "text": sentence}
+        if not reader.sentences:
             raise AnswerError("The language model returned an empty answer")
-        return answer
+        log.info("Answer: first sentence %.2f s, done %.2f s, %d sentences", first, time.perf_counter() - start, len(reader.sentences))
+        yield {"type": "done", "sources": reader.sources, "highlight": reader.highlight}
+
+    async def warm_up(self) -> None:
+        """One tiny request, so the first question doesn't also pay for opening the connection."""
+        await asyncio.wait_for(self._model.ainvoke([HumanMessage("Reply with OK.")]), TIMEOUT_S)
 
 
-def _text_of(message: Any) -> str:
-    if message is None:
-        return ""
-    text = getattr(message, "text", None)
-    if isinstance(text, str):
-        return text
-    content = getattr(message, "content", "")
-    return content if isinstance(content, str) else json.dumps(content)
+def _text_of(chunk: Any) -> str:
+    content = getattr(chunk, "content", "")
+    if isinstance(content, str):
+        return content
+    # Content blocks: only text blocks are the answer (reasoning blocks are not).
+    return "".join(block.get("text", "") for block in content if isinstance(block, dict) and block.get("type") == "text")
 
 
 def load_answerer(model_name: str) -> Answerer | None:
@@ -181,7 +214,7 @@ def load_answerer(model_name: str) -> Answerer | None:
     from langchain.chat_models import init_chat_model
 
     try:
-        model = init_chat_model(model_name, max_tokens=MAX_TOKENS)
+        model = init_chat_model(model_name, max_tokens=MAX_TOKENS, reasoning_effort=REASONING_EFFORT)
     except Exception as error:  # Missing key or provider package: answers fall back to the scripted ones.
         reason = " ".join(str(error).split())[:240] or type(error).__name__
         log.warning("LLM answers are off (%s); set the provider's API key, e.g. FIREWORKS_API_KEY. %s", model_name, reason)

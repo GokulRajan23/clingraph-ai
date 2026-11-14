@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { answerFor, citationsOf, FALLBACK, SUGGESTIONS } from '../chat/script'
-import { FIXTURE, REPORT_IDS } from './fixture'
-import { displayName, nameReports } from './naming'
-import { neighborhood, sourceReports } from './query'
+import { answerFor, FALLBACK, SUGGESTIONS } from '../chat/script'
+import { DEMO_GRAPH as FIXTURE, PATIENTS, REPORT_IDS, SOURCES } from '../demo/data'
+import { searchPatients } from '../patients'
+import { documentedIn, neighborhood, sourceReports, sourcesOf } from './query'
 import { TYPE_STYLE } from './style'
 
 const ids = new Set(FIXTURE.nodes.map((n) => n.id))
@@ -19,7 +19,7 @@ describe('fixture graph', () => {
     }
   })
 
-  it('has the five report nodes the uploads are mapped onto', () => {
+  it('has the five report nodes', () => {
     expect(FIXTURE.nodes.filter((n) => n.type === 'report').map((n) => n.id)).toEqual([...REPORT_IDS])
   })
 
@@ -38,52 +38,26 @@ describe('fixture graph', () => {
   })
 
   it('traces clinical nodes back to source reports', () => {
-    expect(sourceReports(FIXTURE, 'nodule-2').map((r) => r.id)).toEqual(['r3'])
-    expect(sourceReports(FIXTURE, 'effusion').map((r) => r.id)).toEqual(['r3', 'r4', 'r5'])
+    expect(sourceReports(FIXTURE, 'hydro-2').map((r) => r.id)).toEqual(['r2'])
+    expect(sourceReports(FIXTURE, 'culture').map((r) => r.id)).toEqual(['r1', 'r2', 'r3', 'r4'])
     expect(sourceReports(FIXTURE, 'patient')).toEqual([])
     // Findings inherit the reports of every state in their chain.
-    expect(sourceReports(FIXTURE, 'nodule').map((r) => r.id)).toEqual(['r1', 'r3', 'r5'])
-    expect(sourceReports(FIXTURE, 'liver').map((r) => r.id)).toEqual(['r1', 'r3', 'r5'])
-    expect(sourceReports(FIXTURE, 'nodule-2').map((r) => r.id)).toEqual(['r3'])
-  })
-})
-
-describe('report naming', () => {
-  it('names reports after uploaded files in upload order', () => {
-    const named = nameReports(FIXTURE, ['ct_2022.pdf', 'Entlassbrief.PDF'])
-    const label = (id: string) => named.nodes.find((n) => n.id === id)?.label
-    expect(label('r1')).toBe('ct_2022')
-    expect(label('r2')).toBe('Entlassbrief')
-    expect(named.nodes.find((n) => n.id === 'r1')?.props[0]).toEqual(['File', 'ct_2022.pdf'])
-  })
-
-  it('keeps synthetic names for reports without an upload and ignores extra uploads', () => {
-    const named = nameReports(FIXTURE, ['a.pdf', 'b.pdf', 'c.pdf', 'd.pdf', 'e.pdf', 'f.pdf'])
-    expect(named.nodes.filter((n) => n.type === 'report').map((n) => n.label)).toEqual(['a', 'b', 'c', 'd', 'e'])
-    expect(nameReports(FIXTURE, ['a.pdf']).nodes.find((n) => n.id === 'r2')?.label).toBe('Discharge summary · 28 Mar 2022')
-  })
-
-  it('does not change the fixture', () => {
-    const before = JSON.stringify(FIXTURE)
-    const named = nameReports(FIXTURE, ['a.pdf'])
-    named.nodes[0].props.push(['x', 'y'])
-    expect(JSON.stringify(FIXTURE)).toBe(before)
-  })
-
-  it('strips only a trailing .pdf extension', () => {
-    expect(displayName('report.pdf.pdf')).toBe('report.pdf')
-    expect(displayName('notes')).toBe('notes')
+    expect(sourceReports(FIXTURE, 'hydro').map((r) => r.id)).toEqual(['r1', 'r2', 'r3', 'r5'])
+    expect(sourceReports(FIXTURE, 'left-stone').map((r) => r.id)).toEqual(['r1', 'r2', 'r3', 'r4', 'r5'])
+    expect(sourceReports(FIXTURE, 'creatinine').map((r) => r.id)).toEqual(['r1', 'r2', 'r3', 'r4', 'r5'])
   })
 })
 
 describe('chat script', () => {
-  it('answers each suggestion with cited, highlighted nodes that exist', () => {
+  it('answers each suggestion with sources and highlighted nodes that exist', () => {
     for (const s of SUGGESTIONS) {
       const answer = answerFor(s.question)
       expect(answer, s.question).toBe(s.answer)
       expect(answer.highlight.length, s.question).toBeGreaterThan(0)
       for (const id of answer.highlight) expect(ids, `${s.question}: ${id}`).toContain(id)
-      for (const id of citationsOf(answer)) expect(REPORT_IDS as readonly string[], `${s.question}: ${id}`).toContain(id)
+      expect(answer.sources.length, s.question).toBeGreaterThan(0)
+      for (const id of answer.sources) expect(REPORT_IDS as readonly string[], `${s.question}: ${id}`).toContain(id)
+      for (const id of answer.sources) expect(answer.highlight, `${s.question}: ${id}`).toContain(id)
     }
   })
 
@@ -94,10 +68,54 @@ describe('chat script', () => {
   it('falls back for anything else', () => {
     expect(answerFor('What is the weather?')).toBe(FALLBACK)
     expect(answerFor('')).toBe(FALLBACK)
-    expect(citationsOf(FALLBACK)).toEqual([])
+    expect(FALLBACK.sources).toEqual([])
+  })
+})
+
+describe('sources', () => {
+  it('quotes the sentence behind every documented node', () => {
+    for (const edge of FIXTURE.edges.filter((e) => e.relation === 'documented_in')) {
+      expect(SOURCES[edge.target]?.quotes[edge.source], `${edge.source} in ${edge.target}`).toBeTruthy()
+    }
   })
 
-  it('numbers citations in first-cited order without duplicates', () => {
-    expect(citationsOf(SUGGESTIONS[2].answer)).toEqual(['r5', 'r3', 'r4'])
+  it('quotes a finding from the states each report describes', () => {
+    const entries = sourcesOf(FIXTURE, SOURCES, 'hydro')
+    expect(entries.map((s) => s.report.id)).toEqual(['r1', 'r2', 'r3', 'r5'])
+    expect(entries[1].quote).toBe(SOURCES.r2.quotes['hydro-2'])
+  })
+
+  it('a report is its own source and the patient has all of them', () => {
+    expect(sourcesOf(FIXTURE, SOURCES, 'r4')).toEqual([{ report: FIXTURE.nodes.find((n) => n.id === 'r4'), quote: SOURCES.r4.summary }])
+    expect(sourcesOf(FIXTURE, SOURCES, 'patient').map((s) => s.report.id)).toEqual([...REPORT_IDS])
+  })
+
+  it('lists what else a report documents', () => {
+    expect(documentedIn(FIXTURE, 'r4', 'ureteroscopy').map((n) => n.id)).toEqual(['left-stone-3', 'right-stone', 'creatinine', 'stent-symptoms', 'culture', 'analysis', 'amlodipine', 'tamsulosin', 'paracetamol', 'cefazolin'])
+  })
+})
+
+describe('patient search', () => {
+  const names = (query: string) => searchPatients(PATIENTS, query).map((p) => p.name)
+
+  it('finds by any part of the name, ignoring case and accents', () => {
+    expect(names('martin')).toEqual(['Martin Keller'])
+    expect(names('schroder')).toEqual(['Anna Schröder'])
+    expect(names('yilmaz')).toEqual(['Fatma Yılmaz'])
+    expect(names('martin kel')).toEqual(['Martin Keller'])
+  })
+
+  it('finds by the start of the insurance number, spaces ignored', () => {
+    expect(names('k417')).toEqual(['Martin Keller'])
+    expect(names('B 4829')).toEqual(['Jonas Hartmann'])
+    expect(names('123456789')).toEqual([])
+  })
+
+  it('finds no one for an empty query', () => {
+    expect(names('  ')).toEqual([])
+  })
+
+  it('only the demo patient has a record', () => {
+    expect(PATIENTS.filter((p) => p.record).map((p) => p.name)).toEqual(['Martin Keller'])
   })
 })

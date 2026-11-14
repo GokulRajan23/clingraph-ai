@@ -14,7 +14,7 @@ export interface SilenceOptions {
   maxMs: number
 }
 
-export const DEFAULT_SILENCE: SilenceOptions = { threshold: 0.025, trailingSilenceMs: 1600, noSpeechMs: 8000, maxMs: 30000 }
+export const DEFAULT_SILENCE: SilenceOptions = { threshold: 0.025, trailingSilenceMs: 800, noSpeechMs: 8000, maxMs: 30000 }
 
 export type Verdict = 'listening' | 'done' | 'no-speech'
 

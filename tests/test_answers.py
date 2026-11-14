@@ -1,14 +1,15 @@
-"""LLM answer tests. The chat model is a fake with LangChain's structured-output shape; no network or key."""
+"""LLM answer tests. The chat model is a fake that streams LangChain message chunks; no network or key."""
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 
-from backend.answers import Answerer, AskRequest, GraphAnswer, build_messages, clean, describe_graph, load_answerer, parse_text
+from backend.answers import Answerer, AskRequest, SentenceReader, build_messages, describe_graph, load_answerer
 from backend.config import Settings
 from backend.main import NO_ANSWERER, create_app
 
@@ -22,31 +23,23 @@ GRAPH = {
 }
 
 
-class FakeStructured:
-    def __init__(self, result: dict[str, Any]) -> None:
-        self.result = result
+class FakeModel:
+    """Stands in for a LangChain chat model: streams `chunks`, then raises `error` if set."""
+
+    def __init__(self, *chunks: str, error: Exception | None = None) -> None:
+        self.chunks = chunks
+        self.error = error
         self.calls: list[list[Any]] = []
 
-    async def ainvoke(self, messages: list[Any]) -> dict[str, Any]:
+    async def astream(self, messages: list[Any]):
         self.calls.append(messages)
-        return self.result
+        for chunk in self.chunks:
+            yield AIMessageChunk(content=chunk)
+        if self.error:
+            raise self.error
 
-
-class FakeModel:
-    """Stands in for a LangChain chat model; records how structured output was requested."""
-
-    def __init__(self, result: dict[str, Any]) -> None:
-        self.structured = FakeStructured(result)
-        self.kwargs: dict[str, Any] = {}
-
-    def with_structured_output(self, schema: Any, **kwargs: Any) -> FakeStructured:
-        assert schema is GraphAnswer
-        self.kwargs = kwargs
-        return self.structured
-
-
-def parsed(lines: list[dict[str, Any]], highlight: list[str]) -> dict[str, Any]:
-    return {"raw": None, "parsed": GraphAnswer.model_validate({"lines": lines, "highlight": highlight}), "parsing_error": None}
+    async def ainvoke(self, messages: list[Any]) -> AIMessage:
+        return AIMessage("OK")
 
 
 def settings() -> Settings:
@@ -61,20 +54,38 @@ def ask(client: TestClient, question: str = "What is she on now?", **extra: Any)
     return client.post("/api/ask", json={"question": question, "graph": GRAPH, **extra})
 
 
-def test_answers_from_the_graph_with_citations_and_highlights() -> None:
-    model = FakeModel(parsed([{"text": "Pembrolizumab, still ongoing.", "cites": ["r2"]}], ["pembrolizumab"]))
+def events(response) -> list[dict[str, Any]]:
+    assert response.headers["content-type"].startswith("application/x-ndjson")
+    return [json.loads(line) for line in response.text.splitlines()]
+
+
+def reader() -> SentenceReader:
+    return SentenceReader(AskRequest(question="q", graph=GRAPH).graph)
+
+
+def test_streams_sentences_then_sources_and_highlights() -> None:
+    model = FakeModel("She's on pembrolizumab, ", "started in 2023.\nIt's still ongoing.\nHIGHLIGHT: pembrolizumab, r2\n")
     response = ask(client_for(model))
     assert response.status_code == 200
-    assert response.json() == {"lines": [{"text": "Pembrolizumab, still ongoing.", "cites": ["r2"]}], "highlight": ["pembrolizumab", "r2"]}
-    # Native JSON-schema output (not forced tool calls), with the raw reply kept for recovery.
-    assert model.kwargs == {"method": "json_schema", "include_raw": True}
+    assert events(response) == [
+        {"type": "sentence", "text": "She's on pembrolizumab, started in 2023."},
+        {"type": "sentence", "text": "It's still ongoing."},
+        {"type": "done", "sources": ["r2"], "highlight": ["pembrolizumab", "r2"]},
+    ]
+
+
+def test_a_sentence_is_sent_as_soon_as_it_is_complete() -> None:
+    sentences = reader()
+    assert sentences.feed("Stable at 19 ") == []
+    assert sentences.feed("mm.\nIt was") == ["Stable at 19 mm."]
+    assert sentences.finish() == ["It was"]
 
 
 def test_the_prompt_carries_the_record_history_and_question() -> None:
-    model = FakeModel(parsed([{"text": "Yes.", "cites": []}], []))
+    model = FakeModel("Yes.")
     history = [{"role": "user", "text": "What is the treatment?"}, {"role": "assistant", "text": "Pembrolizumab."}]
     ask(client_for(model), "Since when?", history=history)
-    system, *turns = model.structured.calls[0]
+    system, *turns = model.calls[0]
     assert isinstance(system, SystemMessage)
     assert "- pembrolizumab [medication] Pembrolizumab (Status: Ongoing)" in system.content
     assert "- pembrolizumab documented_in r2" in system.content
@@ -82,38 +93,34 @@ def test_the_prompt_carries_the_record_history_and_question() -> None:
     assert turns[-1].content == "Since when?"
 
 
-def test_drops_citations_and_highlights_the_graph_does_not_have() -> None:
-    answer = GraphAnswer.model_validate(
-        {"lines": [{"text": "  Ongoing   since 2023. ", "cites": ["r2", "pembrolizumab", "r9", "r2"]}, {"text": " ", "cites": []}], "highlight": ["ghost", "pembrolizumab"]}
-    )
-    # Only report nodes can be cited; unknown IDs and blank lines go; cited reports are highlighted.
-    assert clean(answer, AskRequest(question="q", graph=GRAPH).graph) == {"lines": [{"text": "Ongoing since 2023.", "cites": ["r2"]}], "highlight": ["pembrolizumab", "r2"]}
+def test_only_real_nodes_are_highlighted_and_reports_are_the_sources() -> None:
+    sentences = reader()
+    # Bullets, stray citation brackets, blank lines and spare spaces go; unknown IDs are dropped.
+    assert sentences.feed("-   Ongoing   since 2023. [r2]\n \nHIGHLIGHT: [ghost, pembrolizumab, r2, r1]\n") == ["Ongoing since 2023."]
+    assert sentences.highlight == ["pembrolizumab", "r2", "r1"]
+    assert sentences.sources == ["r2", "r1"]
 
 
-def test_recovers_json_wrapped_in_reasoning_and_fences() -> None:
-    raw = AIMessage('<think>The record says r2.</think>\n```json\n{"lines": [{"text": "Pembrolizumab.", "cites": ["r2"]}], "highlight": []}\n```')
-    model = FakeModel({"raw": raw, "parsed": None, "parsing_error": ValueError("not JSON")})
+def test_drops_reasoning_before_the_answer() -> None:
+    sentences = reader()
+    assert sentences.feed("<think>The record\nsays r2.") == []
+    assert sentences.feed("</think>\nPembrolizumab.\n") == ["Pembrolizumab."]
+
+
+def test_keeps_at_most_five_sentences() -> None:
+    assert len(reader().feed("".join(f"Fact {i}.\n" for i in range(8)))) == 5
+
+
+def test_an_empty_answer_is_an_error_event() -> None:
+    assert events(ask(client_for(FakeModel("\nHIGHLIGHT: r2\n")))) == [{"type": "error", "detail": "The language model returned an empty answer"}]
+
+
+def test_a_failure_midway_keeps_the_sentences_already_sent() -> None:
+    model = FakeModel("Pembrolizumab.\n", error=RuntimeError("401 invalid key sk-secret"))
     response = ask(client_for(model))
-    assert response.status_code == 200
-    assert response.json()["lines"] == [{"text": "Pembrolizumab.", "cites": ["r2"]}]
-
-
-def test_unusable_reply_is_a_bad_gateway() -> None:
-    model = FakeModel({"raw": AIMessage("I am not sure."), "parsed": None, "parsing_error": ValueError("not JSON")})
-    response = ask(client_for(model))
-    assert response.status_code == 502
-    assert "usable answer" in response.json()["detail"]
-
-
-def test_provider_errors_are_reported_without_details() -> None:
-    class Failing(FakeStructured):
-        async def ainvoke(self, messages: list[Any]) -> dict[str, Any]:
-            raise RuntimeError("401 invalid key sk-secret")
-
-    model = FakeModel({})
-    model.structured = Failing({})
-    response = ask(client_for(model))
-    assert response.status_code == 502
+    sent = events(response)
+    assert sent[0] == {"type": "sentence", "text": "Pembrolizumab."}
+    assert sent[1]["type"] == "error"
     assert "sk-secret" not in response.text
 
 
@@ -129,20 +136,15 @@ def test_rejects_bad_requests() -> None:
 
 
 def test_refuses_other_origins() -> None:
-    model = FakeModel(parsed([{"text": "x", "cites": []}], []))
+    model = FakeModel("x")
     response = client_for(model).post("/api/ask", json={"question": "q", "graph": GRAPH}, headers={"Origin": "https://evil.example"})
     assert response.status_code == 403
-    assert model.structured.calls == []
-
-
-def test_parse_text_needs_an_object() -> None:
-    with pytest.raises(ValueError):
-        parse_text("no json here")
+    assert model.calls == []
 
 
 def test_missing_provider_key_turns_answers_off(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("FIREWORKS_API_KEY", raising=False)
-    assert load_answerer("fireworks:accounts/fireworks/models/glm-5p3-flash") is None
+    assert load_answerer("fireworks:accounts/fireworks/models/deepseek-v4p1-flash-1017") is None
 
 
 def test_describes_every_node_and_relation() -> None:

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { transcribe } from '../api'
 import { rms, SilenceDetector } from './silence'
+import { chime, mark, startTurn } from './timing'
 
 export type InputState = 'idle' | 'recording' | 'transcribing'
 
@@ -40,7 +41,8 @@ export function useVoiceInput(onText: (text: string) => void) {
     window.clearInterval(s.timer)
     loudness.current = 0
     s.stream.getTracks().forEach((t) => t.stop())
-    void s.context.close().catch(() => undefined)
+    // Closed a moment later, so a chime played on it can finish.
+    window.setTimeout(() => void s.context.close().catch(() => undefined), 400)
   }
 
   const cancel = useCallback(() => {
@@ -127,10 +129,13 @@ export function useVoiceInput(onText: (text: string) => void) {
         setState('idle')
         return
       }
+      chime(s.context)
+      startTurn()
       setState('transcribing')
       transcribe(audio)
         .then((text) => {
           if (turn !== generation.current) return
+          mark('transcribed')
           if (text) deliver.current(text)
           else setError("Didn't catch that. Click the mic and ask again.")
         })
