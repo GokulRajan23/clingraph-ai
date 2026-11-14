@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import time
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.config import Settings, load_settings
-from backend.elevenlabs import BASE_URL, ElevenLabs
+from backend.elevenlabs import BASE_URL, DEFAULT_TTS_MODEL, DEFAULT_VOICE_ID, ElevenLabs
 from backend.main import create_app
 
 KEY = "test-key"
@@ -23,6 +24,7 @@ class FakeElevenLabs:
         self.status = 200
         self.stt_body: object = {"language_code": "en", "text": " Which procedures are documented? "}
         self.voices: list[dict[str, str]] = [{"voice_id": "account-voice", "name": "Ava"}]
+        self.missing_voices: set[str] = set()
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -33,6 +35,10 @@ class FakeElevenLabs:
         if request.url.path == "/v2/voices":
             return httpx.Response(200, json={"voices": self.voices, "has_more": False})
         if request.url.path.startswith("/v1/text-to-speech/"):
+            voice = request.url.path.rsplit("/", 1)[-1]
+            if voice in self.missing_voices:
+                message = f"A voice with voice_id '{voice}' was not found."
+                return httpx.Response(404, json={"detail": {"status": "voice_not_found", "message": message}})
             return httpx.Response(200, content=b"ID3fake-mp3", headers={"content-type": "audio/mpeg"})
         return httpx.Response(404)
 
@@ -49,7 +55,7 @@ def settings(key: str | None = KEY) -> Settings:
 @pytest.fixture
 def client(fake: FakeElevenLabs) -> TestClient:
     eleven = ElevenLabs(api_key=KEY, stt_model="stt-model", tts_model="tts-model", voice_id="voice-123", transport=httpx.MockTransport(fake))
-    return TestClient(create_app(settings(), eleven))
+    return TestClient(create_app(settings(), eleven, warm_up=False))
 
 
 def test_status_reports_voice_enabled(client: TestClient) -> None:
@@ -118,25 +124,70 @@ def test_upstream_errors_are_mapped_without_leaking_the_key(client: TestClient, 
     assert KEY not in response.text
 
 
-def without_voice(fake: FakeElevenLabs) -> TestClient:
-    eleven = ElevenLabs(api_key=KEY, transport=httpx.MockTransport(fake))
-    return TestClient(create_app(settings(), eleven))
+def without_voice(fake: FakeElevenLabs, model: str = "eleven_multilingual_v2") -> TestClient:
+    eleven = ElevenLabs(api_key=KEY, tts_model=model, transport=httpx.MockTransport(fake))
+    return TestClient(create_app(settings(), eleven, warm_up=False))
 
 
-def test_speak_without_voice_id_uses_the_accounts_first_voice_once(fake: FakeElevenLabs) -> None:
+def tts_paths(fake: FakeElevenLabs) -> list[str]:
+    return [r.url.path for r in fake.requests]
+
+
+def test_default_voice_and_model_are_the_benchmarked_choice(fake: FakeElevenLabs) -> None:
+    client = without_voice(fake)
+    assert client.post("/api/voice/speak", json={"text": "one"}).status_code == 200
+    assert tts_paths(fake) == [f"/v1/text-to-speech/{DEFAULT_VOICE_ID}"]
+    payload = json.loads(fake.requests[0].read())
+    assert payload["model_id"] == DEFAULT_TTS_MODEL == "eleven_multilingual_v2"
+    assert "language_code" not in payload  # not supported by multilingual_v2
+
+
+def test_language_code_is_sent_to_models_that_support_it(fake: FakeElevenLabs) -> None:
+    without_voice(fake, model="eleven_flash_v2_5").post("/api/voice/speak", json={"text": "one"})
+    assert json.loads(fake.requests[0].read())["language_code"] == "en"
+
+
+def test_withdrawn_default_voice_falls_back_to_the_account_voice_once(fake: FakeElevenLabs) -> None:
+    fake.missing_voices.add(DEFAULT_VOICE_ID)
     client = without_voice(fake)
     assert client.post("/api/voice/speak", json={"text": "one"}).status_code == 200
     assert client.post("/api/voice/speak", json={"text": "two"}).status_code == 200
-    paths = [r.url.path for r in fake.requests]
-    assert paths == ["/v2/voices", "/v1/text-to-speech/account-voice", "/v1/text-to-speech/account-voice"]
-    assert fake.requests[0].headers["xi-api-key"] == KEY
+    assert tts_paths(fake) == [f"/v1/text-to-speech/{DEFAULT_VOICE_ID}", "/v2/voices", "/v1/text-to-speech/account-voice", "/v1/text-to-speech/account-voice"]
 
 
-def test_speak_without_any_voice_explains_what_to_do(fake: FakeElevenLabs) -> None:
+def test_a_chosen_voice_that_is_missing_is_reported_not_replaced(client: TestClient, fake: FakeElevenLabs) -> None:
+    fake.missing_voices.add("voice-123")
+    response = client.post("/api/voice/speak", json={"text": "hello"})
+    assert response.status_code == 502
+    assert "voice-123" in response.json()["detail"]
+    assert "/v2/voices" not in tts_paths(fake)
+
+
+def test_no_voice_at_all_explains_what_to_do(fake: FakeElevenLabs) -> None:
+    fake.missing_voices.add(DEFAULT_VOICE_ID)
     fake.voices = []
     response = without_voice(fake).post("/api/voice/speak", json={"text": "hello"})
     assert response.status_code == 502
     assert "ELEVENLABS_VOICE_ID" in response.json()["detail"]
+
+
+def test_startup_warms_the_voice_up_once(fake: FakeElevenLabs) -> None:
+    eleven = ElevenLabs(api_key=KEY, transport=httpx.MockTransport(fake))
+    with TestClient(create_app(settings(), eleven)) as client:
+        for _ in range(50):
+            if fake.requests:
+                break
+            time.sleep(0.01)
+        assert client.get("/api/voice/status").json() == {"enabled": True}
+    assert tts_paths(fake) == [f"/v1/text-to-speech/{DEFAULT_VOICE_ID}"]
+    assert json.loads(fake.requests[0].read())["text"] == "Ready."
+
+
+def test_failed_warm_up_does_not_stop_the_server(fake: FakeElevenLabs) -> None:
+    fake.status = 401
+    eleven = ElevenLabs(api_key=KEY, transport=httpx.MockTransport(fake))
+    with TestClient(create_app(settings(), eleven)) as client:
+        assert client.get("/api/voice/status").status_code == 200
 
 
 def test_malformed_transcription_response_is_an_error(client: TestClient, fake: FakeElevenLabs) -> None:

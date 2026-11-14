@@ -60,6 +60,14 @@ describe('spoken answers', () => {
     expect(speechText(SUGGESTIONS[3].answer)).toContain('carboplatin and pemetrexed')
   })
 
+  it('reads dates in full, without a leading zero', () => {
+    const text = speechText(SUGGESTIONS[1].answer)
+    expect(text).toContain('(2 March 2022)')
+    expect(text).toContain('(21 June 2023)')
+    expect(speechText(SUGGESTIONS[0].answer)).toMatch(/^February 2022: first documented/)
+    expect(text).not.toMatch(/\b(Mar|Jun) \d{4}/)
+  })
+
   it('speaks the fallback as is', () => {
     expect(speechText(FALLBACK)).toBe(FALLBACK.lines[0].text)
   })

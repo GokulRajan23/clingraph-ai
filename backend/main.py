@@ -6,6 +6,9 @@ API key stays out of the browser. Run: uvicorn backend.main:app --port 8000
 
 from __future__ import annotations
 
+import asyncio
+import logging
+from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
@@ -19,14 +22,23 @@ MAX_AUDIO_BYTES = 10 * 1024 * 1024
 MAX_TEXT_CHARS = 2500
 AUDIO_TYPES = ("audio/", "video/webm")  # Some browsers label MediaRecorder output video/webm.
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+log = logging.getLogger("uvicorn.error")
 
 
-def create_app(settings: Settings | None = None, client: ElevenLabs | None = None) -> FastAPI:
-    app = FastAPI(title="ClinGraph voice", docs_url=None, redoc_url=None)
-    app.state.settings = settings or load_settings()
-    if client is None and app.state.settings.api_key:
-        s = app.state.settings
-        client = ElevenLabs(api_key=s.api_key, stt_model=s.stt_model, tts_model=s.tts_model, voice_id=s.voice_id, language=s.language)
+def create_app(settings: Settings | None = None, client: ElevenLabs | None = None, warm_up: bool = True) -> FastAPI:
+    settings = settings or load_settings()
+    if client is None and settings.api_key:
+        client = ElevenLabs(api_key=settings.api_key, stt_model=settings.stt_model, tts_model=settings.tts_model, voice_id=settings.voice_id, language=settings.language)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        task = asyncio.create_task(_warm_up(client)) if client is not None and warm_up else None
+        yield
+        if task is not None and not task.done():
+            task.cancel()
+
+    app = FastAPI(title="ClinGraph voice", docs_url=None, redoc_url=None, lifespan=lifespan)
+    app.state.settings = settings
     app.state.client = client
 
     # Every call spends ElevenLabs credits. Browsers send Origin on cross-site POSTs, and a
@@ -80,6 +92,15 @@ def create_app(settings: Settings | None = None, client: ElevenLabs | None = Non
 
 class SpeakRequest(BaseModel):
     text: str = Field(min_length=1, max_length=MAX_TEXT_CHARS, pattern=r"\S")
+
+
+async def _warm_up(client: ElevenLabs) -> None:
+    try:
+        await client.warm_up()
+        log.info("ElevenLabs voice %s ready (%s)", client.current_voice(), client.tts_model)
+    except ElevenLabsError as error:
+        # Not fatal: the first answer will surface the same problem to the user.
+        log.warning("ElevenLabs warm-up failed: %s", error)
 
 
 def _upstream(error: ElevenLabsError) -> HTTPException:

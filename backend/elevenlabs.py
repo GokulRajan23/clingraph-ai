@@ -11,12 +11,21 @@ STT_PATH = "/v1/speech-to-text"
 TTS_PATH = "/v1/text-to-speech/{voice_id}"
 VOICES_PATH = "/v2/voices"
 
-# Sources (checked 2026-11-14): elevenlabs.io/docs/models and the API reference.
-# scribe_v3 is the current batch model (scribe_v1 is deprecated). eleven_flash_v2_5 is the
-# documented low-latency REST TTS model, at half the per-character price.
+# Chosen 2026-11-14 by benchmarking the app's own answers (latency, and a TTS -> Scribe round trip
+# scoring the clinical wording):
+# - scribe_v3: current batch STT model; 8/8 spoken questions word-perfect at ~0.4 s
+#   (scribe_v2_medical and keyterms gave no further gain).
+# - eleven_multilingual_v2: ElevenLabs' most natural stable TTS model, a full answer in ~1 s
+#   (flash_v2_5 is ~0.5 s faster but plainer; v4/v3 take 3.5-4 s, too slow for chat).
+# - Nathaniel C, "Calm Medical Support Agent" (Voice Library): clearest in the round trip
+#   (2.5% WER), built for medical support, and not one of the premade voices that expire 2026-12-31.
 DEFAULT_STT_MODEL = "scribe_v3"
-DEFAULT_TTS_MODEL = "eleven_flash_v2_5"
+DEFAULT_TTS_MODEL = "eleven_multilingual_v2"
+DEFAULT_VOICE_ID = "eIYyt1GDV2CYz5Ccyam2"
 TTS_OUTPUT_FORMAT = "mp3_44100_128"
+# Models that do not support language_code (per the TTS API reference).
+NO_LANGUAGE_CODE = ("eleven_multilingual_v2",)
+WARM_UP_TEXT = "Ready."
 
 TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 
@@ -34,12 +43,14 @@ class ElevenLabs:
     api_key: str
     stt_model: str = DEFAULT_STT_MODEL
     tts_model: str = DEFAULT_TTS_MODEL
-    # None: use the first voice on the account. ElevenLabs' former default voices are not on
-    # accounts created after March 2026 and expire on 2026-12-31, so no voice id is hardcoded.
+    # Set from ELEVENLABS_VOICE_ID. None: DEFAULT_VOICE_ID, falling back to the account's first
+    # voice if that library voice is ever withdrawn.
     voice_id: str | None = None
     language: str = "en"
     # Tests pass an httpx.MockTransport; production uses the default network transport.
     transport: httpx.AsyncBaseTransport | None = None
+    # The account voice used after DEFAULT_VOICE_ID turned out to be unavailable.
+    fallback_voice: str | None = None
 
     def _client(self) -> httpx.AsyncClient:
         return httpx.AsyncClient(
@@ -67,10 +78,11 @@ class ElevenLabs:
             raise ElevenLabsError("Unexpected speech-to-text response")
         return text.strip()
 
-    async def resolve_voice(self, client: httpx.AsyncClient) -> str:
-        """The configured voice, or the account's first voice (looked up once, then cached)."""
-        if self.voice_id:
-            return self.voice_id
+    def current_voice(self) -> str:
+        return self.voice_id or self.fallback_voice or DEFAULT_VOICE_ID
+
+    async def account_voice(self, client: httpx.AsyncClient) -> str:
+        """The account's first voice (by name)."""
         response = await self._send(client.get(VOICES_PATH, params={"page_size": 10, "sort": "name", "sort_direction": "asc"}))
         try:
             voices = response.json()["voices"]
@@ -79,22 +91,39 @@ class ElevenLabs:
             raise ElevenLabsError("Unexpected voices response") from error
         if not isinstance(voice_id, str) or not voice_id:
             raise ElevenLabsError("No ElevenLabs voice is available: add one in ElevenLabs or set ELEVENLABS_VOICE_ID")
-        self.voice_id = voice_id
         return voice_id
 
     async def speak(self, text: str) -> bytes:
         """Synthesises `text` and returns MP3 audio."""
+        body: dict[str, str] = {"text": text, "model_id": self.tts_model}
+        if self.tts_model not in NO_LANGUAGE_CODE:
+            body["language_code"] = self.language
         async with self._client() as client:
-            voice_id = await self.resolve_voice(client)
-            response = await self._send(
-                client.post(
-                    TTS_PATH.format(voice_id=voice_id),
-                    params={"output_format": TTS_OUTPUT_FORMAT},
-                    json={"text": text, "model_id": self.tts_model, "language_code": self.language},
-                    headers={"accept": "audio/mpeg"},
+
+            async def synthesise(voice_id: str) -> httpx.Response:
+                return await self._send(
+                    client.post(
+                        TTS_PATH.format(voice_id=voice_id),
+                        params={"output_format": TTS_OUTPUT_FORMAT},
+                        json=body,
+                        headers={"accept": "audio/mpeg"},
+                    )
                 )
-            )
+
+            try:
+                response = await synthesise(self.current_voice())
+            except ElevenLabsError as error:
+                # Only the built-in default falls back; a voice the user chose should fail loudly.
+                if error.status != 404 or self.voice_id or self.fallback_voice:
+                    raise
+                self.fallback_voice = await self.account_voice(client)
+                response = await synthesise(self.fallback_voice)
         return response.content
+
+    async def warm_up(self) -> None:
+        """One tiny synthesis, so the first real answer doesn't pay the voice's cold start (seconds
+        for a Voice Library voice on its first request with a model)."""
+        await self.speak(WARM_UP_TEXT)
 
     @staticmethod
     async def _send(request) -> httpx.Response:

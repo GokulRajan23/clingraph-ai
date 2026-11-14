@@ -98,11 +98,18 @@ const SPOKEN: [RegExp, string][] = [
   [/(\d) ?%/g, '$1 percent'],
   [/\bq3w\b/g, 'every three weeks'],
   [/ \/ /g, ' and '],
+  // "02 Mar 2022" is read as "zero two Mar"; say "2 March 2022".
+  [/\b0(\d) (?=[A-Z][a-z]{2} \d{4})/g, '$1 '],
 ]
 
-/** The answer as one passage to read aloud: lines joined, citations left out, units spelled out. */
+const MONTHS: Record<string, string> = {
+  Jan: 'January', Feb: 'February', Mar: 'March', Apr: 'April', Jun: 'June', Jul: 'July',
+  Aug: 'August', Sep: 'September', Oct: 'October', Nov: 'November', Dec: 'December',
+}
+
+/** The answer as one passage to read aloud: lines joined, citations left out, units and dates spelled out. */
 export function speechText(answer: Answer): string {
   let text = answer.lines.map((line) => line.text.trim()).join(' ')
   for (const [pattern, spoken] of SPOKEN) text = text.replace(pattern, spoken)
-  return text
+  return text.replace(/\b(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?= \d{4})/g, (m) => MONTHS[m])
 }
