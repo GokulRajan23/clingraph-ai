@@ -41,7 +41,7 @@ The suggested questions have scripted answers that appear at once. Any other que
 
 ## Deploy (Vercel)
 
-`vercel.json` builds the interface into `frontend/dist` and serves the backend as one Python function (`api/index.py`) for every `/api` route. In the Vercel project settings add the environment variables `ELEVENLABS_API_KEY` and `FIREWORKS_API_KEY` (optionally `LLM_MODEL`, `ELEVENLABS_VOICE_ID`), then deploy with `npx vercel --prod` or by importing the GitHub repo. The backend only answers its own deployment domain (from Vercel's `VERCEL_*` variables) and localhost; add others to `ALLOWED_HOSTS` (comma-separated). Anyone who can open the URL spends your ElevenLabs and Fireworks credits, so keep the link private or turn on Vercel's deployment protection.
+`vercel.json` deploys two Vercel services on one domain: `web` (the Vite interface in `frontend/`) and `api` (the FastAPI backend, entry `api/index.py`). `/api/*` goes to `api`, everything else to `web`; no bindings are needed because the browser calls `/api` directly. In the Vercel project settings add the environment variables `ELEVENLABS_API_KEY` and `FIREWORKS_API_KEY` (optionally `LLM_MODEL`, `ELEVENLABS_VOICE_ID`), then deploy with `npx vercel --prod` or by importing the GitHub repo. The backend only answers its own deployment domain (from Vercel's `VERCEL_*` variables) and localhost; add others to `ALLOWED_HOSTS` (comma-separated). Anyone who can open the URL spends your ElevenLabs and Fireworks credits, so keep the link private or turn on Vercel's deployment protection.
 
 ## What v1 does
 
