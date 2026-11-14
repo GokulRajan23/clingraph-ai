@@ -1,9 +1,9 @@
 /**
- * The only seam between the UI and the outside world. Graph building, the timeline and querying are still
- * resolved locally from a fixture and hardcoded answers; voice goes through the backend
- * (/api/voice/*), which holds the ElevenLabs key.
+ * The only seam between the UI and the outside world. Graph building and the timeline are still
+ * resolved locally from a fixture. Questions are answered by the backend's LLM (/api/ask), which is
+ * sent the graph; voice goes through /api/voice/*. The backend holds the API keys.
  */
-import { answerFor, SUGGESTIONS, type Answer } from './chat/script'
+import { FALLBACK, problemAnswer, scriptedAnswer, SUGGESTIONS, toAnswer, type Answer, type Turn } from './chat/script'
 import { FIXTURE } from './graph/fixture'
 import { nameReports } from './graph/naming'
 import { deriveTimeline, type Timeline } from './graph/timeline'
@@ -37,10 +37,35 @@ export async function fetchSuggestions(): Promise<string[]> {
   return SUGGESTIONS.map((s) => s.question)
 }
 
-/** Answers a question about the graph. */
-export async function ask(question: string): Promise<Answer> {
-  await wait(ANSWER_MS)
-  return answerFor(question)
+/**
+ * Answers a question about the graph. Suggested questions get their scripted answer at once;
+ * anything else goes to the LLM with the graph and the conversation so far. Without the backend
+ * or a configured model, the fallback answer says what can be asked.
+ */
+export async function ask(question: string, graph: Graph, history: Turn[]): Promise<Answer> {
+  const scripted = scriptedAnswer(question)
+  if (scripted) {
+    await wait(ANSWER_MS)
+    return scripted
+  }
+  let response: Response
+  try {
+    response = await fetch('/api/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, graph, history }),
+    })
+  } catch {
+    return FALLBACK
+  }
+  // 404: an older backend without /api/ask. 503: no model configured.
+  if (response.status === 404 || response.status === 503) return FALLBACK
+  if (!response.ok) return problemAnswer(`Sorry, I couldn't answer that just now. ${await failure(response, 'The answer service failed')}`)
+  try {
+    return toAnswer(await response.json()) ?? FALLBACK
+  } catch {
+    return FALLBACK
+  }
 }
 
 /** Whether the backend is running with an ElevenLabs key. Any failure means no voice. */

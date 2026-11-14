@@ -1,7 +1,7 @@
-"""Voice backend for ClinGraph: speech-to-text and text-to-speech through ElevenLabs.
+"""Backend for ClinGraph: voice through ElevenLabs and answers from an LLM.
 
-The graph and chat stay in the frontend for v1; this server only exists so the ElevenLabs
-API key stays out of the browser. Run: uvicorn backend.main:app --port 8000
+The graph stays in the frontend for v1, which sends it with each question; this server exists so
+the API keys stay out of the browser. Run: uvicorn backend.main:app --port 8000
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
+from .answers import Answerer, AnswerError, AskRequest, load_answerer
 from .config import Settings, load_settings
 from .elevenlabs import ElevenLabs, ElevenLabsError
 
@@ -25,8 +26,16 @@ LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 log = logging.getLogger("uvicorn.error")
 
 
-def create_app(settings: Settings | None = None, client: ElevenLabs | None = None, warm_up: bool = True) -> FastAPI:
+# Passed as `answerer` to build no answerer even when LLM_MODEL is set (tests).
+NO_ANSWERER = object()
+
+
+def create_app(settings: Settings | None = None, client: ElevenLabs | None = None, warm_up: bool = True, answerer: Answerer | object | None = None) -> FastAPI:
     settings = settings or load_settings()
+    if answerer is None and settings.llm_model:
+        answerer = load_answerer(settings.llm_model)
+    if answerer is NO_ANSWERER:
+        answerer = None
     if client is None and settings.api_key:
         client = ElevenLabs(api_key=settings.api_key, stt_model=settings.stt_model, tts_model=settings.tts_model, voice_id=settings.voice_id, language=settings.language)
 
@@ -40,6 +49,7 @@ def create_app(settings: Settings | None = None, client: ElevenLabs | None = Non
     app = FastAPI(title="ClinGraph voice", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.settings = settings
     app.state.client = client
+    app.state.answerer = answerer
 
     # Every call spends ElevenLabs credits. Browsers send Origin on cross-site POSTs, and a
     # multipart upload needs no preflight, so refuse anything not from this machine. Requests
@@ -86,6 +96,21 @@ def create_app(settings: Settings | None = None, client: ElevenLabs | None = Non
         except ElevenLabsError as error:
             raise _upstream(error) from error
         return Response(content=audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/ask")
+    async def ask(body: AskRequest, request: Request) -> dict:
+        answerer = request.app.state.answerer
+        if answerer is None:
+            raise HTTPException(503, "Answers are not configured: set LLM_MODEL and the provider's API key")
+        try:
+            return await answerer.answer(body)
+        except TimeoutError as error:
+            raise HTTPException(504, "The language model took too long to answer") from error
+        except AnswerError as error:
+            raise HTTPException(502, str(error)) from error
+        except Exception as error:  # Provider errors: auth, quota, unknown model. Details go to the log.
+            log.exception("LLM answer failed (%s)", answerer.name)
+            raise HTTPException(502, f"The language model failed ({type(error).__name__})") from error
 
     return app
 

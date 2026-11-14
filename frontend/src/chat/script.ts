@@ -1,7 +1,7 @@
 /**
- * Hardcoded answers for v1. Each suggested question has a scripted answer about the
- * patient's history: lines of text, each citing the reports it comes from, plus the graph
- * nodes the answer is about (highlighted when the answer appears).
+ * Answers about the patient's history: lines of text, each citing the reports it comes from, plus
+ * the graph nodes the answer is about (highlighted when the answer appears). The suggested questions
+ * have scripted answers; anything else is answered by the backend's LLM (see api.ask).
  */
 
 export interface AnswerLine {
@@ -79,10 +79,47 @@ export const FALLBACK: Answer = {
 
 const normalize = (text: string) => text.trim().toLowerCase().replace(/[?.!\s]+$/, '').replace(/\s+/g, ' ')
 
-/** The scripted answer for a suggested question (typed or clicked), otherwise the fallback. */
-export function answerFor(question: string): Answer {
+/** The scripted answer for a suggested question (typed or clicked), if it is one. */
+export function scriptedAnswer(question: string): Answer | null {
   const key = normalize(question)
-  return SUGGESTIONS.find((s) => normalize(s.question) === key)?.answer ?? FALLBACK
+  return SUGGESTIONS.find((s) => normalize(s.question) === key)?.answer ?? null
+}
+
+/** The scripted answer for a suggested question, otherwise the fallback. */
+export function answerFor(question: string): Answer {
+  return scriptedAnswer(question) ?? FALLBACK
+}
+
+/** A one-line answer that says what went wrong, with nothing cited or highlighted. */
+export function problemAnswer(text: string): Answer {
+  return { lines: [{ text, cites: [] }], highlight: [] }
+}
+
+const isStrings = (value: unknown): value is string[] => Array.isArray(value) && value.every((v) => typeof v === 'string')
+
+/** Reads an answer from the backend; null if the shape is wrong or it says nothing. */
+export function toAnswer(body: unknown): Answer | null {
+  if (typeof body !== 'object' || body === null) return null
+  const { lines, highlight } = body as { lines?: unknown; highlight?: unknown }
+  if (!Array.isArray(lines) || !isStrings(highlight)) return null
+  const parsed: AnswerLine[] = []
+  for (const line of lines) {
+    const { text, cites } = (line ?? {}) as { text?: unknown; cites?: unknown }
+    if (typeof text !== 'string' || !isStrings(cites)) return null
+    if (text.trim()) parsed.push({ text: text.trim(), cites })
+  }
+  return parsed.length > 0 ? { lines: parsed, highlight } : null
+}
+
+/** An earlier turn of the conversation, as context for a follow-up question. */
+export interface Turn {
+  role: 'user' | 'assistant'
+  text: string
+}
+
+/** The last `limit` turns of a conversation, answers flattened to their text. */
+export function historyOf(messages: ({ role: 'user'; text: string } | { role: 'assistant'; answer: Answer })[], limit = 8): Turn[] {
+  return messages.slice(-limit).map((m) => (m.role === 'user' ? { role: 'user', text: m.text } : { role: 'assistant', text: m.answer.lines.map((l) => l.text).join(' ') }))
 }
 
 /** The reports an answer cites, in first-cited order; line markers number into this list. */

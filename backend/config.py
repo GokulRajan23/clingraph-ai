@@ -1,4 +1,4 @@
-"""Voice settings, read once from the environment and an optional git-ignored .env file."""
+"""Voice and answer settings, read once from the environment and an optional git-ignored .env file."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from .answers import DEFAULT_LLM_MODEL
 from .elevenlabs import DEFAULT_STT_MODEL, DEFAULT_TTS_MODEL
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -20,6 +21,9 @@ class Settings:
     stt_model: str
     tts_model: str
     language: str
+    # "provider:model" for LangChain's init_chat_model. The provider's own key (e.g.
+    # FIREWORKS_API_KEY) must be set too, or answers fall back to the scripted ones.
+    llm_model: str | None = None
 
     @property
     def voice_enabled(self) -> bool:
@@ -36,4 +40,5 @@ def load_settings(env_file: Path | None = ROOT / ".env") -> Settings:
         stt_model=(os.environ.get("ELEVENLABS_STT_MODEL") or "").strip() or DEFAULT_STT_MODEL,
         tts_model=(os.environ.get("ELEVENLABS_TTS_MODEL") or "").strip() or DEFAULT_TTS_MODEL,
         language="en",
+        llm_model=(os.environ.get("LLM_MODEL") or "").strip() or DEFAULT_LLM_MODEL,
     )

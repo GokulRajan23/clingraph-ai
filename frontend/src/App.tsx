@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { ask, fetchGraph, fetchSuggestions, fetchTimeline, processReports, voiceStatus } from './api'
-import { speechText, type Answer } from './chat/script'
+import { historyOf, speechText, type Answer } from './chat/script'
 import { ChatPanel, type VoiceControls } from './components/ChatPanel'
 import { CentrePanel, VIEWS } from './components/CentrePanel'
 import { ReportsPanel } from './components/ReportsPanel'
@@ -153,9 +153,11 @@ export default function App() {
   const askQuestion = async (question: string, spoken = false) => {
     const turn = conversation.current
     speech.stop()
+    if (!graph) return
+    const history = historyOf(messages)
     setMessages((current) => [...current, { id: nextId('question'), role: 'user', text: question, spoken }])
     setPending(true)
-    const answer = await ask(question)
+    const answer = await ask(question, graph, history)
     if (turn !== conversation.current) return
     const id = nextId('answer')
     setMessages((current) => [...current, { id, role: 'assistant', answer }])
