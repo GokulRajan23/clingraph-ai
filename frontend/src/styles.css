@@ -115,13 +115,41 @@ header { height: var(--header-h); flex: none; padding: 0 28px; display: flex; al
   .workspace { grid-template-columns: 240px minmax(0, 1fr) 320px; }
 }
 
-/* Voice */
-.chat-input .mic { background: white; color: var(--accent); border-color: #d9d3e8; display: grid; place-items: center; }
-.chat-input .mic:hover:not(:disabled) { background: var(--tint); }
-.chat-input .mic.recording { background: #c8453b; border-color: #c8453b; color: white; animation: pulse 1.4s ease-out infinite; }
-@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgb(200 69 59 / .45); } 100% { box-shadow: 0 0 0 10px rgb(200 69 59 / 0); } }
-@media (prefers-reduced-motion: reduce) { .chat-input .mic.recording { animation: none; } }
+/* Voice: the orb is the microphone. Big while the conversation is empty, then docked in a bar. */
+.voice-hero { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 8px 2px; text-align: center; }
+.voice-hero .voice-status { font-size: 15px; color: var(--ink); max-width: 260px; }
+.voice-status { font-size: 13px; color: var(--muted); }
+.orb-button { --ring: 18px; flex: none; padding: 0; border: 0; background: none; border-radius: 50%; display: grid; place-items: center; transition: opacity .3s, filter .3s; }
+.orb-button:disabled { opacity: 1; }
+.orb-button.waiting { opacity: .4; filter: grayscale(.7); }
+.orb-button:hover:not(:disabled) .fluid-orb { box-shadow: 0 0 0 calc(var(--ring) / 3) var(--tint), 0 12px 32px -14px rgb(104 96 165 / .6); }
+.orb-button.listening .fluid-orb { animation: orb-ring 1.4s ease-out infinite; }
+.orb-button.speaking .fluid-orb, .orb-button.preparing .fluid-orb { animation: orb-breathe 2.4s ease-in-out infinite; }
+.fluid-orb { position: relative; overflow: hidden; border-radius: 50%; box-shadow: 0 12px 32px -14px rgb(104 96 165 / .6); }
+.fluid-orb canvas { display: block; width: 100%; height: 100%; }
+@keyframes orb-ring { 0% { box-shadow: 0 0 0 0 rgb(104 96 165 / .45); } 100% { box-shadow: 0 0 0 var(--ring) rgb(104 96 165 / 0); } }
+@keyframes orb-breathe { 50% { box-shadow: 0 0 0 calc(var(--ring) / 2.5) rgb(104 96 165 / .16); } }
+@media (prefers-reduced-motion: reduce) { .orb-button .fluid-orb { animation: none !important; } }
+.voice-actions { display: flex; gap: 8px; justify-content: center; flex: none; }
+.voice-actions button { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; font-size: 12px; border-radius: 999px; color: var(--accent); border-color: #d9d3e8; }
+.voice-actions button:hover { background: var(--tint); }
+.voice-actions span[aria-hidden] { font-size: 10px; }
+.try { width: 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 12px; text-align: left; }
+.try-list { display: flex; flex-direction: column; gap: 6px; }
+.try-list .chip { border-radius: 10px; padding: 9px 12px; font-size: 13px; }
+/* Docked: the suggestions keep to one scrolling row so the conversation keeps the room. */
+.voice-first .suggestions { flex: none; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; }
+.voice-first .suggestions .chip { flex: none; white-space: nowrap; }
+.voice-bar { flex: none; display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 6px; border: 1px solid var(--line); border-radius: 999px; background: white; }
+.voice-bar .orb-button { --ring: 7px; }
+.voice-bar .voice-status { flex: 1; min-width: 0; }
+.voice-bar .type-icon { display: grid; place-items: center; padding: 6px; border-radius: 50%; }
+.type-toggle { align-self: center; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.type-toggle svg { vertical-align: -3px; }
+.chat-input .close-input { background: white; color: var(--accent); border-color: #d9d3e8; display: grid; place-items: center; }
+.chat-input .close-input:hover { background: var(--tint); }
 .voice-error { font-size: 12px; color: #9b3128; margin-top: -4px; }
+.voice-hero + .voice-error { text-align: center; }
 .spoken-mark { vertical-align: -3px; margin-right: 6px; color: var(--accent); }
 .answer-actions { display: flex; align-items: center; gap: 14px; }
 .listen { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; font-size: 12px; border-radius: 999px; color: var(--accent); border-color: #d9d3e8; }

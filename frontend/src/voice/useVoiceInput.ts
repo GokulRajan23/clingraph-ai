@@ -33,9 +33,12 @@ export function useVoiceInput(onText: (text: string) => void) {
   const generation = useRef(0)
   // True between the mic click and the browser granting the microphone.
   const opening = useRef(false)
+  // Latest microphone loudness (RMS, 0–1), for visualisers. A ref: it changes ten times a second.
+  const loudness = useRef(0)
 
   const release = (s: Session) => {
     window.clearInterval(s.timer)
+    loudness.current = 0
     s.stream.getTracks().forEach((t) => t.stop())
     void s.context.close().catch(() => undefined)
   }
@@ -102,7 +105,8 @@ export function useVoiceInput(onText: (text: string) => void) {
       discard: false,
       timer: window.setInterval(() => {
         analyser.getByteTimeDomainData(buffer)
-        const verdict = detector.update(rms(buffer), performance.now())
+        loudness.current = rms(buffer)
+        const verdict = detector.update(loudness.current, performance.now())
         if (verdict === 'no-speech') {
           s.discard = true
           setError("Didn't catch that. Click the mic and ask again.")
@@ -156,5 +160,8 @@ export function useVoiceInput(onText: (text: string) => void) {
     [],
   )
 
-  return { state, error, start, stop, cancel, clearError: () => setError(null) }
+  /** Microphone loudness while recording, 0 otherwise. Cheap enough to call every frame. */
+  const level = useCallback(() => loudness.current, [])
+
+  return { state, error, level, start, stop, cancel, clearError: () => setError(null) }
 }

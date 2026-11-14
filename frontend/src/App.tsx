@@ -171,6 +171,8 @@ export default function App() {
     playingId: speech.playingId,
     loadingId: speech.loadingId,
     error: voiceInput.error ?? speech.error,
+    level: voiceInput.level,
+    onCancel: voiceInput.cancel,
     onMic: () => {
       if (voiceInput.state === 'recording') return voiceInput.stop()
       speech.stop()

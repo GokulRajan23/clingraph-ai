@@ -18,9 +18,10 @@ Both install dependencies when needed, start the voice backend on port 8000 and 
 
 ### Voice (ElevenLabs)
 
-Copy `.env.example` to `.env` (git-ignored) and set `ELEVENLABS_API_KEY`. The key stays in the backend; the browser never sees it. Without a key, or without the backend, the mic and listen buttons are hidden and typing works as usual.
+Copy `.env.example` to `.env` (git-ignored) and set `ELEVENLABS_API_KEY`. The key stays in the backend; the browser never sees it. With voice on, the chat panel is voice first: an animated orb is the microphone. Without a key, or without the backend, the orb and listen buttons are hidden and the panel is a plain typed chat.
 
-- **Ask by voice:** click the mic, ask your question, and pause. Recording stops by itself after about 1.5 s of quiet (or click the mic again), is transcribed with ElevenLabs Scribe (`scribe_v3`, English) and sent as the question.
+- **The orb:** large while the conversation is empty, with suggested questions below it; after the first question it docks to a bar under the conversation. It swells with your voice while listening, stirs faster while transcribing and answering, and glows while speaking. Tap it to ask, tap again to send, tap while it speaks to stop. **Type a question instead** (or the keyboard icon in the bar) opens a text input; Esc closes it.
+- **Ask by voice:** tap the orb, ask your question, and pause. Recording stops by itself after about 1.5 s of quiet (or tap **Send**; **Cancel** throws it away), is transcribed with ElevenLabs Scribe (`scribe_v3`, English) and sent as the question.
 - **Answers aloud:** answers to spoken questions are read out with ElevenLabs text-to-speech (`eleven_multilingual_v2`). Every answer has a **Listen** button to play or stop it.
 - **Voice:** Nathaniel C, "Calm Medical Support Agent" from the ElevenLabs Voice Library (`eIYyt1GDV2CYz5Ccyam2`), unless `ELEVENLABS_VOICE_ID` is set. If that library voice is ever withdrawn, the first voice on your account is used. The backend sends one tiny warm-up request at start, because a library voice's first request can take several seconds.
 - **Why these:** chosen by benchmarking the app's own answers on 8 voices and 5 models (latency, plus a speech-to-text round trip scoring the clinical wording). All models pronounced the clinical terms clearly; `eleven_multilingual_v2` returns a full answer in about 1 s, `eleven_flash_v2_5` in about 0.5 s with plainer delivery, and `eleven_v4`/`eleven_v3` take 3.5-4 s. `scribe_v3` transcribed every test question word for word.
@@ -35,6 +36,8 @@ Copy `.env.example` to `.env` (git-ignored) and set `ELEVENLABS_API_KEY`. The ke
 - **Chat (right):** once the graph is shown, suggested questions appear. Each answer cites its source reports and highlights the items it is about in both the graph and the timeline.
 
 The interface uses Google Sans (SIL Open Font License), bundled through `@fontsource-variable/google-sans`, so no font requests go to Google.
+
+The voice orb is FluidOrb from [Rare UI](https://rareui.com) by Swami Malode, adapted in `frontend/src/components/FluidOrb.tsx` (MIT + Commons Clause + Attribution; the notice is kept in that file).
 
 ## Not connected yet
 
