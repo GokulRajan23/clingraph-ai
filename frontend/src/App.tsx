@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
-import { ask, fetchGraph, fetchSuggestions, processReports } from './api'
-import type { Answer } from './chat/script'
-import { ChatPanel } from './components/ChatPanel'
+import { ask, fetchGraph, fetchSuggestions, processReports, voiceStatus } from './api'
+import { speechText, type Answer } from './chat/script'
+import { ChatPanel, type VoiceControls } from './components/ChatPanel'
 import { GraphPanel } from './components/GraphPanel'
 import { ReportsPanel } from './components/ReportsPanel'
 import type { Graph } from './graph/types'
+import { useSpeech } from './voice/useSpeech'
+import { useVoiceInput } from './voice/useVoiceInput'
 
 export interface Upload {
   id: string
@@ -20,7 +22,7 @@ export interface AnswerMessage {
   role: 'assistant'
   answer: Answer
 }
-export type Message = { id: string; role: 'user'; text: string } | AnswerMessage
+export type Message = { id: string; role: 'user'; text: string; spoken: boolean } | AnswerMessage
 
 /** `id` changes on every notice, so a repeated message restarts its timer and is re-announced. */
 export interface Notice {
@@ -44,6 +46,7 @@ export default function App() {
   const [pending, setPending] = useState(false)
   const [dragging, setDragging] = useState(false)
   const [suggestions, setSuggestions] = useState<string[]>([])
+  const [voiceEnabled, setVoiceEnabled] = useState(false)
   // Bumped when the chat is reset, so an answer still in flight is dropped.
   const conversation = useRef(0)
 
@@ -81,6 +84,10 @@ export default function App() {
   }, [uploads.length])
 
   useEffect(() => {
+    void voiceStatus().then(setVoiceEnabled)
+  }, [])
+
+  useEffect(() => {
     if (!notice) return
     const timer = window.setTimeout(() => setNotice(null), 5000)
     return () => window.clearTimeout(timer)
@@ -105,6 +112,8 @@ export default function App() {
     })
   }
 
+  const speech = useSpeech()
+
   // Removing a report rebuilds the graph and renames report nodes, so earlier answers would cite
   // the wrong files: the conversation starts over.
   const removeUpload = (id: string) => {
@@ -113,11 +122,15 @@ export default function App() {
     setMessages([])
     setPending(false)
     setFocus(null)
+    speech.reset()
+    voiceInput.cancel()
   }
 
-  const askQuestion = async (question: string) => {
+  /** Asks a question; answers to spoken questions are read aloud. */
+  const askQuestion = async (question: string, spoken = false) => {
     const turn = conversation.current
-    setMessages((current) => [...current, { id: nextId('question'), role: 'user', text: question }])
+    speech.stop()
+    setMessages((current) => [...current, { id: nextId('question'), role: 'user', text: question, spoken }])
     setPending(true)
     const answer = await ask(question)
     if (turn !== conversation.current) return
@@ -125,6 +138,29 @@ export default function App() {
     setMessages((current) => [...current, { id, role: 'assistant', answer }])
     setPending(false)
     if (answer.highlight.length > 0) setFocus({ kind: 'answer', messageId: id, ids: answer.highlight })
+    if (spoken && voiceEnabled) void speech.play(id, speechText(answer))
+  }
+
+  const voiceInput = useVoiceInput((text) => void askQuestion(text, true))
+  const voice: VoiceControls = {
+    enabled: voiceEnabled,
+    input: voiceInput.state,
+    playingId: speech.playingId,
+    loadingId: speech.loadingId,
+    error: voiceInput.error ?? speech.error,
+    onMic: () => {
+      if (voiceInput.state === 'recording') return voiceInput.stop()
+      speech.stop()
+      speech.unlock()
+      speech.clearError()
+      void voiceInput.start()
+    },
+    onPlay: (message) => {
+      speech.unlock()
+      voiceInput.clearError()
+      void speech.play(message.id, speechText(message.answer))
+    },
+    onStop: speech.stop,
   }
 
   const carriesFiles = (event: DragEvent) => event.dataTransfer.types.includes('Files')
@@ -165,6 +201,7 @@ export default function App() {
           focus={focus}
           onAsk={(question) => void askQuestion(question)}
           onFocus={setFocus}
+          voice={voice}
         />
       </main>
       {dragging && (

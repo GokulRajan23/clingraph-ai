@@ -1,6 +1,7 @@
 /**
- * The only seam between the UI and graph building / querying. v1 resolves everything
- * locally from a fixture and hardcoded answers; a real backend replaces these bodies.
+ * The only seam between the UI and the outside world. Graph building and querying are still
+ * resolved locally from a fixture and hardcoded answers; voice goes through the backend
+ * (/api/voice/*), which holds the ElevenLabs key.
  */
 import { answerFor, SUGGESTIONS, type Answer } from './chat/script'
 import { FIXTURE } from './graph/fixture'
@@ -31,4 +32,48 @@ export async function fetchSuggestions(): Promise<string[]> {
 export async function ask(question: string): Promise<Answer> {
   await wait(ANSWER_MS)
   return answerFor(question)
+}
+
+/** Whether the backend is running with an ElevenLabs key. Any failure means no voice. */
+export async function voiceStatus(): Promise<boolean> {
+  try {
+    const response = await fetch('/api/voice/status')
+    if (!response.ok) return false
+    const body: unknown = await response.json()
+    return typeof body === 'object' && body !== null && (body as { enabled?: unknown }).enabled === true
+  } catch {
+    return false
+  }
+}
+
+/** Speech-to-text for one recorded question. */
+export async function transcribe(audio: Blob): Promise<string> {
+  const form = new FormData()
+  const extension = audio.type.includes('mp4') ? 'm4a' : audio.type.includes('ogg') ? 'ogg' : 'webm'
+  form.append('audio', audio, `question.${extension}`)
+  const response = await fetch('/api/voice/transcribe', { method: 'POST', body: form })
+  if (!response.ok) throw new Error(await failure(response, 'Transcription failed'))
+  const body = (await response.json()) as { text?: unknown }
+  return typeof body.text === 'string' ? body.text.trim() : ''
+}
+
+/** Text-to-speech: MP3 audio for an answer. */
+export async function speak(text: string): Promise<Blob> {
+  const response = await fetch('/api/voice/speak', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+  if (!response.ok) throw new Error(await failure(response, 'Could not read the answer aloud'))
+  return response.blob()
+}
+
+async function failure(response: Response, fallback: string): Promise<string> {
+  try {
+    const body = (await response.json()) as { detail?: unknown }
+    if (typeof body.detail === 'string') return body.detail
+  } catch {
+    // Not JSON: fall through.
+  }
+  return `${fallback} (${response.status})`
 }

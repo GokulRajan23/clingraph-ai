@@ -89,3 +89,20 @@ export function answerFor(question: string): Answer {
 export function citationsOf(answer: Answer): string[] {
   return [...new Set(answer.lines.flatMap((line) => line.cites))]
 }
+
+// Clinical shorthand a voice would read letter by letter.
+const SPOKEN: [RegExp, string][] = [
+  [/(\d) ?mm\b/g, '$1 millimetres'],
+  [/(\d) ?ml\b/g, '$1 millilitres'],
+  [/(\d) ?mg\b/g, '$1 milligrams'],
+  [/(\d) ?%/g, '$1 percent'],
+  [/\bq3w\b/g, 'every three weeks'],
+  [/ \/ /g, ' and '],
+]
+
+/** The answer as one passage to read aloud: lines joined, citations left out, units spelled out. */
+export function speechText(answer: Answer): string {
+  let text = answer.lines.map((line) => line.text.trim()).join(' ')
+  for (const [pattern, spoken] of SPOKEN) text = text.replace(pattern, spoken)
+  return text
+}
