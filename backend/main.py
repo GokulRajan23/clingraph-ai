@@ -43,7 +43,7 @@ NO_ANSWERER = object()
 def create_app(settings: Settings | None = None, client: ElevenLabs | None = None, warm_up: bool = True, answerer: Answerer | object | None = None) -> FastAPI:
     settings = settings or load_settings()
     if answerer is None and settings.llm_model:
-        answerer = load_answerer(settings.llm_model)
+        answerer = load_answerer(settings.llm_model, settings.llm_reasoning_effort)
     if answerer is NO_ANSWERER:
         answerer = None
     if client is None and settings.api_key:

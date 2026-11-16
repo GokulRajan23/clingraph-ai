@@ -24,6 +24,9 @@ class Settings:
     # "provider:model" for LangChain's init_chat_model. The provider's own key (e.g.
     # FIREWORKS_API_KEY) must be set too, or answers fall back to the scripted ones.
     llm_model: str | None = None
+    # How hard a reasoning model thinks before answering (e.g. "low" for gpt-oss on Groq). None
+    # leaves the provider default (REASONING_EFFORT in answers.py).
+    llm_reasoning_effort: str | None = None
 
     @property
     def voice_enabled(self) -> bool:
@@ -41,4 +44,5 @@ def load_settings(env_file: Path | None = ROOT / ".env") -> Settings:
         tts_model=(os.environ.get("ELEVENLABS_TTS_MODEL") or "").strip() or DEFAULT_TTS_MODEL,
         language="en",
         llm_model=(os.environ.get("LLM_MODEL") or "").strip() or DEFAULT_LLM_MODEL,
+        llm_reasoning_effort=(os.environ.get("LLM_REASONING_EFFORT") or "").strip() or None,
     )

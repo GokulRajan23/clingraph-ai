@@ -158,6 +158,8 @@ def test_groq_is_not_sent_a_reasoning_effort(monkeypatch: pytest.MonkeyPatch) ->
     assert groq is not None and fireworks is not None
     assert getattr(groq._model, "reasoning_effort", None) is None
     assert getattr(fireworks._model, "reasoning_effort", None) == "none"
+    gpt_oss = load_answerer("groq:openai/gpt-oss-120b", "low")
+    assert gpt_oss is not None and getattr(gpt_oss._model, "reasoning_effort", None) == "low"
 
 
 def test_describes_every_node_and_relation() -> None:

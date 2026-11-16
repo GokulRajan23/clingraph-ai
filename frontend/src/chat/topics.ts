@@ -29,7 +29,7 @@ export const TOPICS: Topic[] = [
     answer: {
       sentences: ['The 12 January assessment records an ibuprofen intolerance, so NSAIDs were avoided.', 'Paracetamol was used for his pain instead.'],
       sources: ['r1'],
-      highlight: ['paracetamol', 'r1'],
+      highlight: ['patient', 'paracetamol', 'r1'],
     },
   },
   {

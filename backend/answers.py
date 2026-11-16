@@ -26,8 +26,8 @@ log = logging.getLogger("uvicorn.error")
 
 DEFAULT_LLM_MODEL = "fireworks:accounts/fireworks/models/deepseek-v4p1-flash-1017"
 # Measured 2026-11-14: without reasoning the first line arrives ~0.7 s sooner, and the answers
-# were as good. Only for providers that accept "none"; Groq rejects the parameter for models that
-# don't reason.
+# were as good. Per provider, overridden by LLM_REASONING_EFFORT: Groq's gpt-oss models take only
+# low/medium/high (measured 2026-11-16: "low" gives the first sentence in ~0.6 s).
 REASONING_EFFORT = {"fireworks": "none"}
 MAX_TOKENS = 1024
 TIMEOUT_S = 45.0
@@ -210,13 +210,13 @@ def _text_of(chunk: Any) -> str:
     return "".join(block.get("text", "") for block in content if isinstance(block, dict) and block.get("type") == "text")
 
 
-def load_answerer(model_name: str) -> Answerer | None:
+def load_answerer(model_name: str, reasoning_effort: str | None = None) -> Answerer | None:
     """Builds the answerer, or None (logged) when the provider package or its API key is missing."""
     from langchain.chat_models import init_chat_model
 
     try:
         options: dict[str, Any] = {"max_tokens": MAX_TOKENS}
-        effort = REASONING_EFFORT.get(model_name.split(":", 1)[0])
+        effort = reasoning_effort or REASONING_EFFORT.get(model_name.split(":", 1)[0])
         if effort:
             options["reasoning_effort"] = effort
         model = init_chat_model(model_name, **options)

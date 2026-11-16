@@ -43,7 +43,7 @@ const DEPARTMENT: [string, string] = ['Department', 'Urology']
 const AUTHOR: [string, string] = ['Author', 'Dr Lena Weber']
 
 const nodes: GraphNode[] = [
-  { id: 'patient', type: 'patient', label: 'Martin Keller · 61 y', props: [['Insurance no.', 'K417064193'], ['Record', 'SYN-URO-001'], ['Born', '17 Apr 1964'], ['Sex', 'Male'], ['Reports', '5']] },
+  { id: 'patient', type: 'patient', label: 'Martin Keller · 61 y', props: [['Insurance no.', 'K417064193'], ['Record', 'SYN-URO-001'], ['Born', '17 Apr 1964'], ['Sex', 'Male'], ['Intolerance', 'Ibuprofen; NSAIDs avoided'], ['Reports', '5']] },
 
   // The five PDFs, D01-D05.
   { id: 'r1', type: 'report', label: 'Initial urology assessment · 12 Jan 2026', props: [['Kind', 'Outpatient assessment'], ['Report date', '12 Jan 2026'], DEPARTMENT, AUTHOR] },
