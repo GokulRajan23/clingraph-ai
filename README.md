@@ -41,7 +41,8 @@ The suggested questions have scripted answers that appear at once. Any other que
 - Set `FIREWORKS_API_KEY` in `.env`. The model is `LLM_MODEL` (`provider:model` for LangChain's `init_chat_model`); empty means DeepSeek V4.1 Flash (1017) on Fireworks AI, `fireworks:accounts/fireworks/models/deepseek-v4p1-flash-1017`. For GLM 5.3 Flash set `LLM_MODEL=fireworks:accounts/fireworks/models/glm-5p3-flash`. Another provider works too once its LangChain package is installed (for example `langchain-openai`) and its key is set.
 - The answer streams: the model writes one sentence per line and a final `HIGHLIGHT:` line naming the nodes the answer is about (the reports among them are its sources), and `/api/ask` sends each sentence on as NDJSON as soon as it is complete. If the model fails partway, the sentences so far stay with a note that the answer was cut short.
 - Reasoning is off (`reasoning_effort="none"`): the first sentence arrives about 0.7 s sooner and the answers were as good.
-- Without a key the backend logs "LLM answers are off" and free questions get the fallback answer; the suggested questions still work.
+- **Free option: Groq.** Create a key at console.groq.com (free tier, no card), set `GROQ_API_KEY` and `LLM_MODEL=groq:<model>` (for example `groq:llama-3.3-70b-versatile`). `langchain-groq` is in `requirements.txt`. The free tier has daily limits.
+- **Without a model** (no key, the free quota used up, or the model fails before answering), a question gets the answer for its topic from `frontend/src/chat/topics.ts`: hand-written answers about Martin's record (medication, procedures, diagnoses, kidney function, stones, symptoms, infection, allergies, tests, hospital stay, plan, the latest review and an overview), each with its sources and highlights. The topic is the one whose keywords the question matches most. Anything else gets the fallback answer.
 
 ## Deploy (Vercel)
 
@@ -60,7 +61,7 @@ Designed for a 16:9 laptop or projector (1440×900, 1920×1080; works from 1280 
 
 ## Not connected yet
 
-There is no upload or PDF parsing: the patients, graph and report excerpts are the demo data in `frontend/src/demo/data.ts`, and the four suggested questions keep scripted answers (`frontend/src/chat/script.ts`) if asked word for word. Every other question is answered by the LLM over the patient's graph (`backend/answers.py`), or gets a fallback answer when no model is configured.
+There is no upload or PDF parsing: the patients, graph and report excerpts are the demo data in `frontend/src/demo/data.ts`, and the four suggested questions keep scripted answers (`frontend/src/chat/script.ts`) if asked word for word. Every other question is answered by the LLM over the patient's graph (`backend/answers.py`), or, without a model, by its topic's answer (`frontend/src/chat/topics.ts`) or the fallback.
 
 The `Graph` shape is defined in `frontend/src/graph/types.ts`; `frontend/src/api.ts` is the seam to the backend (`ask` sends whatever graph is shown, and the voice functions call `backend/`). Connecting real records means filling the same `Patient`, `Graph` and `ReportSource` shapes from a backend instead of the demo file.
 

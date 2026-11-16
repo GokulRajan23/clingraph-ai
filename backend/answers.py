@@ -26,8 +26,9 @@ log = logging.getLogger("uvicorn.error")
 
 DEFAULT_LLM_MODEL = "fireworks:accounts/fireworks/models/deepseek-v4p1-flash-1017"
 # Measured 2026-11-14: without reasoning the first line arrives ~0.7 s sooner, and the answers
-# were as good.
-REASONING_EFFORT = "none"
+# were as good. Only for providers that accept "none"; Groq rejects the parameter for models that
+# don't reason.
+REASONING_EFFORT = {"fireworks": "none"}
 MAX_TOKENS = 1024
 TIMEOUT_S = 45.0
 MAX_SENTENCES = 5
@@ -214,10 +215,14 @@ def load_answerer(model_name: str) -> Answerer | None:
     from langchain.chat_models import init_chat_model
 
     try:
-        model = init_chat_model(model_name, max_tokens=MAX_TOKENS, reasoning_effort=REASONING_EFFORT)
+        options: dict[str, Any] = {"max_tokens": MAX_TOKENS}
+        effort = REASONING_EFFORT.get(model_name.split(":", 1)[0])
+        if effort:
+            options["reasoning_effort"] = effort
+        model = init_chat_model(model_name, **options)
     except Exception as error:  # Missing key or provider package: answers fall back to the scripted ones.
         reason = " ".join(str(error).split())[:240] or type(error).__name__
-        log.warning("LLM answers are off (%s); set the provider's API key, e.g. FIREWORKS_API_KEY. %s", model_name, reason)
+        log.warning("LLM answers are off (%s); set the provider's API key, e.g. GROQ_API_KEY or FIREWORKS_API_KEY. %s", model_name, reason)
         return None
     log.info("LLM answers from %s", model_name)
     return Answerer(model, model_name)

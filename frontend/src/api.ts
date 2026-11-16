@@ -5,6 +5,7 @@
  * the API keys.
  */
 import { FALLBACK, problemAnswer, readAnswer, scriptedAnswer, type Answer, type Turn } from './chat/script'
+import { topicAnswer } from './chat/topics'
 import type { Graph } from './graph/types'
 
 const ANSWER_MS = 700
@@ -14,8 +15,9 @@ const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve,
 /**
  * Answers a question about the graph. Suggested questions get their scripted answer at once;
  * anything else goes to the LLM with the graph and the conversation so far, and `onSentence` is
- * called with the sentences so far as each one arrives. Without the backend or a configured model, the
- * fallback answer says what can be asked.
+ * called with the sentences so far as each one arrives. Without the backend or a configured model,
+ * or when the model fails before saying anything (e.g. its free quota is used up), the answer for
+ * the question's topic is given (chat/topics.ts), else the fallback answer says what can be asked.
  */
 export async function ask(question: string, graph: Graph, history: Turn[], onSentence: (sentences: string[]) => void, signal?: AbortSignal): Promise<Answer> {
   const scripted = scriptedAnswer(question)
@@ -32,12 +34,25 @@ export async function ask(question: string, graph: Graph, history: Turn[], onSen
       signal,
     })
   } catch {
-    return FALLBACK
+    if (signal?.aborted) return FALLBACK
+    return offline(question)
   }
   // 404: an older backend without /api/ask. 503: no model configured.
-  if (response.status === 404 || response.status === 503) return FALLBACK
-  if (!response.ok || !response.body) return problemAnswer(`Sorry, I couldn't answer that just now. ${await failure(response, 'The answer service failed')}`)
-  return readAnswer(response.body, onSentence)
+  if (response.status === 404 || response.status === 503) return offline(question)
+  if (!response.ok || !response.body) {
+    const problem = problemAnswer(`Sorry, I couldn't answer that just now. ${await failure(response, 'The answer service failed')}`)
+    return (await offline(question, null)) ?? problem
+  }
+  const answer = await readAnswer(response.body, onSentence)
+  return answer.failed ? ((await offline(question, null)) ?? answer) : answer
+}
+
+/** The answer for the question's topic, after the same short pause as a scripted one; else `otherwise`. */
+async function offline<T extends Answer | null = Answer>(question: string, otherwise: T = FALLBACK as T): Promise<Answer | T> {
+  const answer = topicAnswer(question)
+  if (!answer) return otherwise
+  await wait(ANSWER_MS)
+  return answer
 }
 
 /**

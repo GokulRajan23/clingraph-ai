@@ -14,6 +14,8 @@ export interface Answer {
   highlight: string[]
   /** The answer stopped partway (the model failed or stalled); its sentences so far are kept. */
   cutShort?: boolean
+  /** The model failed before saying anything: the answer only says what went wrong. */
+  failed?: boolean
 }
 
 export interface Suggestion {
@@ -108,7 +110,7 @@ const isStrings = (value: unknown): value is string[] => Array.isArray(value) &&
 export async function readAnswer(body: ReadableStream<Uint8Array>, onSentence: (sentences: string[]) => void): Promise<Answer> {
   const sentences: string[] = []
   const end = (problem: string): Answer =>
-    sentences.length > 0 ? { sentences, sources: [], highlight: [], cutShort: true } : problemAnswer(`Sorry, I couldn't answer that just now. ${problem}`)
+    sentences.length > 0 ? { sentences, sources: [], highlight: [], cutShort: true } : { ...problemAnswer(`Sorry, I couldn't answer that just now. ${problem}`), failed: true }
   // One event; an Answer once the stream is over.
   const handle = (raw: string): Answer | null => {
     if (!raw.trim()) return null

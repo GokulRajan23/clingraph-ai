@@ -145,6 +145,19 @@ def test_refuses_other_origins() -> None:
 def test_missing_provider_key_turns_answers_off(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("FIREWORKS_API_KEY", raising=False)
     assert load_answerer("fireworks:accounts/fireworks/models/deepseek-v4p1-flash-1017") is None
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    assert load_answerer("groq:llama-3.3-70b-versatile") is None
+
+
+def test_groq_is_not_sent_a_reasoning_effort(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Groq rejects reasoning_effort for models that don't reason; Fireworks gets "none".
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("FIREWORKS_API_KEY", "test-key")
+    groq = load_answerer("groq:llama-3.3-70b-versatile")
+    fireworks = load_answerer("fireworks:accounts/fireworks/models/deepseek-v4p1-flash-1017")
+    assert groq is not None and fireworks is not None
+    assert getattr(groq._model, "reasoning_effort", None) is None
+    assert getattr(fireworks._model, "reasoning_effort", None) == "none"
 
 
 def test_describes_every_node_and_relation() -> None:
