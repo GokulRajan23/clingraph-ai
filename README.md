@@ -18,13 +18,17 @@ Node.js 22.12 or newer and Python 3.11 or newer. From this folder:
 
 Both install dependencies when needed, start the backend (voice and answers) on port 8000 and the interface at http://127.0.0.1:5173 (Vite moves to the next free port if 5173 is taken; the terminal shows the address). The interface proxies `/api` to the backend.
 
+### Voice through Groq (free, the hosted demo's)
+
+With `GROQ_API_KEY` set (the key the answers use) and no ElevenLabs key, the backend hears questions with Whisper (`whisper-large-v3`) and reads answers with Orpheus (`canopylabs/orpheus-v1-english`, voice Daniel; `GROQ_VOICE` picks another of autumn, diana, hannah, austin, daniel, troy, or `off`). Both are on Groq's free tier. Orpheus needs its terms accepted once in the Groq console (the playground page for the model), takes at most 200 characters a request and returns WAV, so a longer sentence is spoken in pieces joined into one clip. Whisper gets a prompt with the record's clinical words; on spoken test questions `whisper-large-v3` was word-perfect where `-turbo` misheard "tamsulosin or amlodipine". If Groq can't speak (terms, quota, outage), answers are read by the browser's own voice for the rest of the visit.
+
 ### Voice without a key (the browser's own)
 
-Without `ELEVENLABS_API_KEY` the pill uses the browser's built-in speech services (Web Speech API), free and keyless: `SpeechRecognition` hears the question and ends it by itself after a pause, and `speechSynthesis` reads each sentence of the answer as it arrives. The voice is the most natural English one the system offers (Edge "Natural", Apple "Premium"/"Enhanced", Google, then Daniel or Samantha; macOS joke voices are never picked). It works in Chrome, Edge and Safari; Chrome and Edge send the audio to their own speech service, so they need a connection. In Firefox, which has no speech recognition, questions are typed and the answers are shown as text. Clinical words may be recognised less reliably than with ElevenLabs Scribe.
+Without `ELEVENLABS_API_KEY` or `GROQ_API_KEY` the pill uses the browser's built-in speech services (Web Speech API), free and keyless: `SpeechRecognition` hears the question and ends it by itself after a pause, and `speechSynthesis` reads each sentence of the answer as it arrives. The voice is the most natural English one the system offers (Edge "Natural", Apple "Premium"/"Enhanced", Google, then Daniel or Samantha; macOS joke voices are never picked). It works in Chrome, Edge and Safari; Chrome and Edge send the audio to their own speech service, so they need a connection. In Firefox, which has no speech recognition, questions are typed and the answers are shown as text. Clinical words may be recognised less reliably than with ElevenLabs Scribe.
 
 ### Voice (ElevenLabs)
 
-Copy `.env.example` to `.env` (git-ignored) and set `ELEVENLABS_API_KEY`. The key stays in the backend; the browser never sees it. With a key the backend's ElevenLabs voice replaces the browser's.
+Copy `.env.example` to `.env` (git-ignored) and set `ELEVENLABS_API_KEY`. The key stays in the backend; the browser never sees it. With a key the backend's ElevenLabs voice replaces Groq's and the browser's.
 
 - **The pill:** a 3D particle capsule (the ClinGraph mark) that is the microphone. It breathes at rest, swells with your voice while listening, pulses while working and sends a wave along itself while speaking. Tap it to ask, tap again to send, tap while it speaks to stop. The keyboard icon opens a text box as a fallback; Esc closes it.
 - **Ask by voice:** tap the pill, ask your question, and pause. Recording stops by itself after about 0.8 s of quiet, with a soft chime (or tap the pill; **Cancel** throws it away), is transcribed with ElevenLabs Scribe (`scribe_v3`, English) and sent as the question.

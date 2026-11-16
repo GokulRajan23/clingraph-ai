@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 from .answers import DEFAULT_LLM_MODEL
 from .elevenlabs import DEFAULT_STT_MODEL, DEFAULT_TTS_MODEL
+from .groq_voice import DEFAULT_VOICE as DEFAULT_GROQ_VOICE
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -27,10 +28,14 @@ class Settings:
     # How hard a reasoning model thinks before answering (e.g. "low" for gpt-oss on Groq). None
     # leaves the provider default (REASONING_EFFORT in answers.py).
     llm_reasoning_effort: str | None = None
+    # Free voice through Groq (Whisper + Orpheus), used when there is no ElevenLabs key. Uses the
+    # same GROQ_API_KEY as the answers; GROQ_VOICE=off leaves voice to the browser.
+    groq_api_key: str | None = None
+    groq_voice: str | None = DEFAULT_GROQ_VOICE
 
     @property
     def voice_enabled(self) -> bool:
-        return bool(self.api_key)
+        return bool(self.api_key) or bool(self.groq_api_key and self.groq_voice)
 
 
 def load_settings(env_file: Path | None = ROOT / ".env") -> Settings:
@@ -45,4 +50,13 @@ def load_settings(env_file: Path | None = ROOT / ".env") -> Settings:
         language="en",
         llm_model=(os.environ.get("LLM_MODEL") or "").strip() or DEFAULT_LLM_MODEL,
         llm_reasoning_effort=(os.environ.get("LLM_REASONING_EFFORT") or "").strip() or None,
+        groq_api_key=(os.environ.get("GROQ_API_KEY") or "").strip() or None,
+        groq_voice=_groq_voice((os.environ.get("GROQ_VOICE") or "").strip().lower()),
     )
+
+
+def _groq_voice(value: str) -> str | None:
+    """GROQ_VOICE: an Orpheus voice name, empty for the default, "off" for no Groq voice."""
+    if value == "off":
+        return None
+    return value or DEFAULT_GROQ_VOICE

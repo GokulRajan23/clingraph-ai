@@ -56,7 +56,7 @@ async function offline<T extends Answer | null = Answer>(question: string, other
 }
 
 /**
- * Whether the backend is running with an ElevenLabs key, or null when the backend did not answer
+ * Whether the backend has a voice (ElevenLabs, or Groq's Whisper and Orpheus), or null when the backend did not answer
  * (not started yet, or down), so the caller can ask again.
  */
 export async function voiceStatus(): Promise<boolean | null> {
@@ -81,7 +81,7 @@ export async function transcribe(audio: Blob): Promise<string> {
   return typeof body.text === 'string' ? body.text.trim() : ''
 }
 
-/** Text-to-speech: MP3 audio for one sentence of an answer. `previousText` is what was said just before. */
+/** Text-to-speech: audio (MP3 from ElevenLabs, WAV from Groq) for one sentence of an answer. `previousText` is what was said just before. */
 export async function speak(text: string, previousText?: string): Promise<Blob> {
   const response = await fetch('/api/voice/speak', {
     method: 'POST',

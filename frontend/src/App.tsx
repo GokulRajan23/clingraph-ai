@@ -44,8 +44,8 @@ export default function App() {
   // Null until the first answer: the graph opens with it.
   const [highlight, setHighlight] = useState<string[] | null>(null)
   const [sourceId, setSourceId] = useState<string | null>(null)
-  // ElevenLabs when the backend has a key, else the browser's own speech services, else typing only.
-  const [voiceMode, setVoiceMode] = useState<'elevenlabs' | 'browser' | 'off'>(() => (browserVoiceSupported() ? 'browser' : 'off'))
+  // The backend's voice (ElevenLabs or Groq) when it has one, else the browser's own speech services, else typing only.
+  const [voiceMode, setVoiceMode] = useState<'server' | 'browser' | 'off'>(() => (browserVoiceSupported() ? 'browser' : 'off'))
   const voiceEnabled = voiceMode !== 'off'
   const [typing, setTyping] = useState(false)
   const [draft, setDraft] = useState('')
@@ -66,7 +66,7 @@ export default function App() {
       const enabled = await voiceStatus()
       if (stopped) return
       if (enabled === null) timer = setTimeout(check, VOICE_STATUS_RETRY_MS)
-      else if (enabled) setVoiceMode('elevenlabs')
+      else if (enabled) setVoiceMode('server')
     }
     void check()
     return () => {
@@ -75,9 +75,11 @@ export default function App() {
     }
   }, [])
 
-  const elevenLabsSpeech = useSpeech()
+  const serverSpeech = useSpeech()
   const browserSpeech = useBrowserSpeech()
-  const speech = voiceMode === 'elevenlabs' ? elevenLabsSpeech : browserSpeech
+  // The server voice failed (quota, outage): read answers with the browser's own voice from then on.
+  const [serverSpeechFailed, setServerSpeechFailed] = useState(false)
+  const speech = voiceMode === 'server' && !serverSpeechFailed ? serverSpeech : browserSpeech
 
   /**
    * Asks a question about the patient. Each sentence of the answer is read aloud as soon as it
@@ -131,9 +133,9 @@ export default function App() {
     if (question?.role === 'user') void askQuestion(question.text, question.spoken)
   }
 
-  const elevenLabsInput = useVoiceInput((text) => void askQuestion(text, true))
+  const serverInput = useVoiceInput((text) => void askQuestion(text, true))
   const browserInput = useBrowserVoiceInput((text) => void askQuestion(text, true))
-  const voiceInput = voiceMode === 'elevenlabs' ? elevenLabsInput : browserInput
+  const voiceInput = voiceMode === 'server' ? serverInput : browserInput
 
   /** Back to the search: everything about the previous patient goes. */
   const clearPatient = () => {
@@ -149,6 +151,14 @@ export default function App() {
     voiceInput.cancel()
   }
 
+  useEffect(() => {
+    if (voiceMode !== 'server' || serverSpeechFailed || !serverSpeech.error || !('speechSynthesis' in window)) return
+    setServerSpeechFailed(true)
+    serverSpeech.clearError()
+    const last = messages.findLast((m) => m.role === 'assistant')
+    if (last?.role === 'assistant') browserSpeech.play(last.id, last.answer.sentences.map(speakable))
+  }, [voiceMode, serverSpeechFailed, serverSpeech, browserSpeech, messages])
+
   const phase = voicePhase({ ready: graph !== null, input: voiceInput.state, pending, loading: speech.loadingId !== null, playing: speech.playingId !== null })
   const busy = phase === 'transcribing' || phase === 'thinking'
   const talking = phase === 'preparing' || phase === 'speaking'
@@ -163,6 +173,7 @@ export default function App() {
     if (voiceInput.state === 'recording') return voiceInput.stop()
     speech.stop()
     speech.unlock()
+    if (speech !== browserSpeech) browserSpeech.unlock()
     speech.clearError()
     void voiceInput.start()
   }
@@ -171,6 +182,7 @@ export default function App() {
     const text = draft.trim()
     if (!text || busy || voiceInput.state !== 'idle') return
     speech.unlock()
+    if (speech !== browserSpeech) browserSpeech.unlock()
     setDraft('')
     void askQuestion(text, false)
   }

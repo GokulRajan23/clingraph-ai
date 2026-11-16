@@ -235,6 +235,7 @@ def test_settings_from_environment(monkeypatch: pytest.MonkeyPatch, tmp_path) ->
 
 def test_settings_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ELEVENLABS_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     assert not load_settings(None).voice_enabled
 
 

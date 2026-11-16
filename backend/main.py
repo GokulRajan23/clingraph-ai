@@ -1,4 +1,4 @@
-"""Backend for ClinGraph: voice through ElevenLabs and answers from an LLM.
+"""Backend for ClinGraph: voice through ElevenLabs or Groq, and answers from an LLM.
 
 The graph stays in the frontend for v1, which sends it with each question; this server exists so
 the API keys stay out of the browser. Run: uvicorn backend.main:app --port 8000
@@ -20,6 +20,10 @@ from pydantic import BaseModel, Field
 from .answers import Answerer, AnswerError, AskRequest, load_answerer
 from .config import Settings, load_settings
 from .elevenlabs import ElevenLabs, ElevenLabsError
+from .groq_voice import GroqVoice, GroqVoiceError
+
+Voice = ElevenLabs | GroqVoice
+VoiceError = (ElevenLabsError, GroqVoiceError)
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 MAX_TEXT_CHARS = 2500
@@ -40,7 +44,7 @@ log = logging.getLogger("uvicorn.error")
 NO_ANSWERER = object()
 
 
-def create_app(settings: Settings | None = None, client: ElevenLabs | None = None, warm_up: bool = True, answerer: Answerer | object | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, client: Voice | None = None, warm_up: bool = True, answerer: Answerer | object | None = None) -> FastAPI:
     settings = settings or load_settings()
     if answerer is None and settings.llm_model:
         answerer = load_answerer(settings.llm_model, settings.llm_reasoning_effort)
@@ -48,6 +52,9 @@ def create_app(settings: Settings | None = None, client: ElevenLabs | None = Non
         answerer = None
     if client is None and settings.api_key:
         client = ElevenLabs(api_key=settings.api_key, stt_model=settings.stt_model, tts_model=settings.tts_model, voice_id=settings.voice_id, language=settings.language)
+    # No ElevenLabs key: Groq's free Whisper and Orpheus, on the key the answers use.
+    if client is None and settings.groq_api_key and settings.groq_voice:
+        client = GroqVoice(api_key=settings.groq_api_key, voice=settings.groq_voice, language=settings.language)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -83,9 +90,9 @@ def create_app(settings: Settings | None = None, client: ElevenLabs | None = Non
             return JSONResponse({"detail": "Unexpected host"}, status_code=403)
         return await call_next(request)
 
-    def voice(request: Request) -> ElevenLabs:
+    def voice(request: Request) -> Voice:
         if request.app.state.client is None:
-            raise HTTPException(503, "Voice is not configured: set ELEVENLABS_API_KEY")
+            raise HTTPException(503, "Voice is not configured: set ELEVENLABS_API_KEY or GROQ_API_KEY")
         return request.app.state.client
 
     @app.get("/api/voice/status")
@@ -93,7 +100,7 @@ def create_app(settings: Settings | None = None, client: ElevenLabs | None = Non
         return {"enabled": request.app.state.client is not None}
 
     @app.post("/api/voice/transcribe")
-    async def transcribe(audio: UploadFile, eleven: ElevenLabs = Depends(voice)) -> dict[str, str]:
+    async def transcribe(audio: UploadFile, eleven: Voice = Depends(voice)) -> dict[str, str]:
         content_type = (audio.content_type or "").split(";")[0].strip().lower()
         if not content_type.startswith(AUDIO_TYPES):
             raise HTTPException(415, "Expected an audio recording")
@@ -104,17 +111,17 @@ def create_app(settings: Settings | None = None, client: ElevenLabs | None = Non
             raise HTTPException(413, "The recording is too long")
         try:
             text = await eleven.transcribe(data, audio.filename or "question.webm", content_type)
-        except ElevenLabsError as error:
+        except VoiceError as error:
             raise _upstream(error) from error
         return {"text": text}
 
     @app.post("/api/voice/speak")
-    async def speak(body: SpeakRequest, eleven: ElevenLabs = Depends(voice)) -> Response:
+    async def speak(body: SpeakRequest, eleven: Voice = Depends(voice)) -> Response:
         try:
             audio = await eleven.speak(body.text, body.previous_text)
-        except ElevenLabsError as error:
+        except VoiceError as error:
             raise _upstream(error) from error
-        return Response(content=audio, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+        return Response(content=audio, media_type=getattr(eleven, "media_type", "audio/mpeg"), headers={"Cache-Control": "no-store"})
 
     @app.post("/api/ask")
     async def ask(body: AskRequest, request: Request) -> StreamingResponse:
@@ -151,13 +158,14 @@ class SpeakRequest(BaseModel):
     previous_text: str | None = Field(default=None, max_length=MAX_TEXT_CHARS)
 
 
-async def _warm_up_voice(client: ElevenLabs) -> None:
+async def _warm_up_voice(client: Voice) -> None:
+    name = _provider(client)
     try:
         await client.warm_up()
-        log.info("ElevenLabs voice %s ready (%s)", client.current_voice(), client.tts_model)
-    except ElevenLabsError as error:
+        log.info("%s voice %s ready (%s)", name, client.current_voice(), client.tts_model)
+    except VoiceError as error:
         # Not fatal: the first answer will surface the same problem to the user.
-        log.warning("ElevenLabs warm-up failed: %s", error)
+        log.warning("%s warm-up failed: %s", name, error)
 
 
 async def _warm_up_answers(answerer: Answerer) -> None:
@@ -168,13 +176,18 @@ async def _warm_up_answers(answerer: Answerer) -> None:
         log.warning("LLM warm-up failed (%s): %s", answerer.name, type(error).__name__)
 
 
-def _upstream(error: ElevenLabsError) -> HTTPException:
+def _provider(client: object) -> str:
+    return "Groq" if isinstance(client, GroqVoice) else "ElevenLabs"
+
+
+def _upstream(error: ElevenLabsError | GroqVoiceError) -> HTTPException:
     # Auth and quota problems are configuration issues on our side; report them as such.
     # ElevenLabs also uses 401 for exhausted credits, so keep its own reason in the message.
+    name = "Groq" if isinstance(error, GroqVoiceError) else "ElevenLabs"
     if error.status in (401, 403):
-        return HTTPException(502, f"ElevenLabs refused the request (check the API key, its permissions and remaining credits). {error}")
+        return HTTPException(502, f"{name} refused the request (check the API key, its permissions and remaining credits). {error}")
     if error.status == 429:
-        return HTTPException(429, "ElevenLabs rate limit or quota reached; try again shortly")
+        return HTTPException(429, f"{name} rate limit or quota reached; try again shortly")
     return HTTPException(502, str(error))
 
 
