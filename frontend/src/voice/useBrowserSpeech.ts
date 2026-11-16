@@ -18,7 +18,11 @@ interface Playback {
   turn: number
   queued: number
   started: boolean
+  watchdog?: number
 }
+
+/** A browser with no working voice never starts speaking: give up after this long (ms). */
+const START_TIMEOUT_MS = 5000
 
 const synth = (): SpeechSynthesis | null => (typeof window !== 'undefined' && 'speechSynthesis' in window ? window.speechSynthesis : null)
 
@@ -67,6 +71,7 @@ export function useBrowserSpeech() {
       if (!live()) return
       if (!playback.started) mark('first audio', true)
       playback.started = true
+      window.clearTimeout(playback.watchdog)
       setLoadingId(null)
       setPlayingId(playback.track.id)
     }
@@ -83,6 +88,15 @@ export function useBrowserSpeech() {
     u.onend = () => done(null)
     u.onerror = (event) => done(event.error === 'interrupted' || event.error === 'canceled' ? null : 'Could not read the answer aloud.')
     s.speak(u)
+    // Some browsers have no voice installed and never start: say so instead of preparing forever.
+    playback.watchdog ??= window.setTimeout(() => {
+      if (!live() || playback.started) return
+      request.current += 1
+      s.cancel()
+      setLoadingId(null)
+      setPlayingId(null)
+      setError("This browser couldn't read the answer aloud. Tick “Show model response” to read it.")
+    }, START_TIMEOUT_MS)
   }
 
   /** Starts a new playback for `track`, cutting off whatever was being said. */
@@ -145,6 +159,7 @@ export function useBrowserSpeech() {
   const stop = useCallback(() => {
     request.current += 1
     const playback = current.current
+    if (playback) window.clearTimeout(playback.watchdog)
     if (playback) playback.track.muted = !playback.track.closed
     current.current = null
     synth()?.cancel()
