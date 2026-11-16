@@ -144,6 +144,25 @@ ul { list-style: none; }
 .results .name { font-weight: 500; }
 .results .mono { font-size: 12px; color: var(--text-tertiary); }
 .results .empty { cursor: default; color: var(--text-tertiary); font-size: 14px; }
+/* the pencilled note under the empty search: which patient has reports */
+.hint {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 22px;
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  font: 500 22px/1 'Caveat', 'Segoe Print', 'Bradley Hand', cursive;
+  color: var(--text-tertiary);
+  transform: rotate(-3deg);
+  transform-origin: right top;
+  animation: rise .6s .9s var(--spring) both;
+  transition: color .2s;
+}
+.hint span { padding-top: 24px; white-space: nowrap; }
+.hint b { font-weight: 500; color: var(--text-secondary); }
+.hint:hover, .hint:hover b { color: var(--accent); }
+.hint-arrow { flex: none; opacity: .85; }
 
 .patient {
   display: inline-flex;

@@ -11,8 +11,11 @@ import { Thread } from './components/Thread'
 import { PATIENTS, SOURCES, type Patient } from './demo/data'
 import { firstName } from './patients'
 import { usePersistentChoice } from './persist'
+import { browserVoiceSupported } from './voice/browser'
 import { phaseStatus, pillMode, voicePhase } from './voice/phase'
 import { mark } from './voice/timing'
+import { useBrowserSpeech } from './voice/useBrowserSpeech'
+import { useBrowserVoiceInput } from './voice/useBrowserVoiceInput'
 import { useSpeech } from './voice/useSpeech'
 import { useVoiceInput } from './voice/useVoiceInput'
 
@@ -41,7 +44,9 @@ export default function App() {
   // Null until the first answer: the graph opens with it.
   const [highlight, setHighlight] = useState<string[] | null>(null)
   const [sourceId, setSourceId] = useState<string | null>(null)
-  const [voiceEnabled, setVoiceEnabled] = useState(false)
+  // ElevenLabs when the backend has a key, else the browser's own speech services, else typing only.
+  const [voiceMode, setVoiceMode] = useState<'elevenlabs' | 'browser' | 'off'>(() => (browserVoiceSupported() ? 'browser' : 'off'))
+  const voiceEnabled = voiceMode !== 'off'
   const [typing, setTyping] = useState(false)
   const [draft, setDraft] = useState('')
   const [response, setResponse] = usePersistentChoice('clingraph.response', 'hidden', ['hidden', 'shown'] as const)
@@ -61,7 +66,7 @@ export default function App() {
       const enabled = await voiceStatus()
       if (stopped) return
       if (enabled === null) timer = setTimeout(check, VOICE_STATUS_RETRY_MS)
-      else setVoiceEnabled(enabled)
+      else if (enabled) setVoiceMode('elevenlabs')
     }
     void check()
     return () => {
@@ -70,7 +75,9 @@ export default function App() {
     }
   }, [])
 
-  const speech = useSpeech()
+  const elevenLabsSpeech = useSpeech()
+  const browserSpeech = useBrowserSpeech()
+  const speech = voiceMode === 'elevenlabs' ? elevenLabsSpeech : browserSpeech
 
   /**
    * Asks a question about the patient. Each sentence of the answer is read aloud as soon as it
@@ -124,7 +131,9 @@ export default function App() {
     if (question?.role === 'user') void askQuestion(question.text, question.spoken)
   }
 
-  const voiceInput = useVoiceInput((text) => void askQuestion(text, true))
+  const elevenLabsInput = useVoiceInput((text) => void askQuestion(text, true))
+  const browserInput = useBrowserVoiceInput((text) => void askQuestion(text, true))
+  const voiceInput = voiceMode === 'elevenlabs' ? elevenLabsInput : browserInput
 
   /** Back to the search: everything about the previous patient goes. */
   const clearPatient = () => {
@@ -200,7 +209,7 @@ export default function App() {
               </button>
             </div>
           ) : (
-            <PatientSearch patients={PATIENTS} onPick={setPatient} />
+            <PatientSearch patients={PATIENTS} onPick={setPatient} hint={PATIENTS.find((p) => p.record)?.name} />
           )}
 
           {patient && !graph && <p className="note">No reports connected for this patient yet.</p>}

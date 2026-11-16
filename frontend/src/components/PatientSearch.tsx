@@ -1,15 +1,18 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Patient } from '../demo/data'
 import { searchPatients } from '../patients'
 
 interface Props {
   patients: Patient[]
   onPick: (patient: Patient) => void
+  /** The name of the patient with reports, pencilled in under the box as a hint; clicking it types it. */
+  hint?: string
 }
 
 /** Finds a patient by name or insurance number as you type; arrows and Enter pick one. */
-export function PatientSearch({ patients, onPick }: Props) {
+export function PatientSearch({ patients, onPick, hint }: Props) {
   const [query, setQuery] = useState('')
+  const input = useRef<HTMLInputElement>(null)
   const [active, setActive] = useState(0)
   const matches = searchPatients(patients, query)
   const open = query.trim() !== ''
@@ -33,6 +36,7 @@ export function PatientSearch({ patients, onPick }: Props) {
         autoComplete="off"
         spellCheck={false}
         autoFocus
+        ref={input}
         value={query}
         onChange={(event) => {
           setQuery(event.target.value)
@@ -47,6 +51,22 @@ export function PatientSearch({ patients, onPick }: Props) {
           event.preventDefault()
         }}
       />
+      {hint && !open && (
+        <button
+          type="button"
+          className="hint"
+          onClick={() => {
+            setQuery(hint)
+            setActive(0)
+            input.current?.focus()
+          }}
+        >
+          <HintArrow />
+          <span>
+            try <b>{hint}</b>
+          </span>
+        </button>
+      )}
       {open && (
         <ul id="patient-results" role="listbox" className="results">
           {matches.length === 0 && <li className="empty">No patient found</li>}
@@ -72,6 +92,16 @@ export function PatientSearch({ patients, onPick }: Props) {
         </ul>
       )}
     </div>
+  )
+}
+
+/** A pencilled dotted arrow curving up from the hint to the search box. */
+function HintArrow() {
+  return (
+    <svg className="hint-arrow" width="56" height="40" viewBox="0 0 56 40" fill="none" aria-hidden="true">
+      <path d="M52 31C38 34 18 30 9 9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeDasharray="0.1 5" />
+      <path d="M3.5 13.5 8.6 7.6l5.6 4.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   )
 }
 

@@ -18,9 +18,13 @@ Node.js 22.12 or newer and Python 3.11 or newer. From this folder:
 
 Both install dependencies when needed, start the backend (voice and answers) on port 8000 and the interface at http://127.0.0.1:5173 (Vite moves to the next free port if 5173 is taken; the terminal shows the address). The interface proxies `/api` to the backend.
 
+### Voice without a key (the browser's own)
+
+Without `ELEVENLABS_API_KEY` the pill uses the browser's built-in speech services (Web Speech API), free and keyless: `SpeechRecognition` hears the question and ends it by itself after a pause, and `speechSynthesis` reads each sentence of the answer as it arrives. The voice is the most natural English one the system offers (Edge "Natural", Apple "Premium"/"Enhanced", Google, then Daniel or Samantha; macOS joke voices are never picked). It works in Chrome, Edge and Safari; Chrome and Edge send the audio to their own speech service, so they need a connection. In Firefox, which has no speech recognition, questions are typed and the answers are shown as text. Clinical words may be recognised less reliably than with ElevenLabs Scribe.
+
 ### Voice (ElevenLabs)
 
-Copy `.env.example` to `.env` (git-ignored) and set `ELEVENLABS_API_KEY`. The key stays in the backend; the browser never sees it. Without a key, or without the backend, the pill can't listen: questions are typed and the answers are shown as text.
+Copy `.env.example` to `.env` (git-ignored) and set `ELEVENLABS_API_KEY`. The key stays in the backend; the browser never sees it. With a key the backend's ElevenLabs voice replaces the browser's.
 
 - **The pill:** a 3D particle capsule (the ClinGraph mark) that is the microphone. It breathes at rest, swells with your voice while listening, pulses while working and sends a wave along itself while speaking. Tap it to ask, tap again to send, tap while it speaks to stop. The keyboard icon opens a text box as a fallback; Esc closes it.
 - **Ask by voice:** tap the pill, ask your question, and pause. Recording stops by itself after about 0.8 s of quiet, with a soft chime (or tap the pill; **Cancel** throws it away), is transcribed with ElevenLabs Scribe (`scribe_v3`, English) and sent as the question.
@@ -45,14 +49,14 @@ The suggested questions have scripted answers that appear at once. Any other que
 
 ## What v1 does
 
-- **Landing:** the ClinGraph mark, two sentences on what it does, and a patient search. Type a name or the start of an insurance number; arrows and Enter (or a click) pick a patient. Only Martin Keller (try "martin" or "K417") has reports connected; the others say so.
+- **Landing:** the ClinGraph mark, two sentences on what it does, and a patient search. Type a name or the start of an insurance number; arrows and Enter (or a click) pick a patient. Only Martin Keller (try "martin" or "K417") has reports connected; the others say so. A pencilled note under the empty search says so too ("try Martin Keller", with a dotted arrow); clicking it types the name.
 - **History at a glance:** once a patient is picked, a horizontal timeline shows one stop per report (Stone found, Stent placed, Discharged, Stone removed, Recovered). Hover or focus a stop for what happened; click it to open the report. It gives way to the graph after the first answer.
 - **Ask:** under the timeline the pill appears with "Tap to ask about Martin's history". The first answer opens the knowledge graph across three quarters of the screen and moves the pill to the column on the right.
 - **Knowledge graph:** greyscale, with entity type shown by shape (legend bottom left). What the latest answer is about, nodes and the relationships between them, is drawn in blue with labels and framed in view; everything else fades to its shape (hover for its name). An answer with nothing specific to show leaves the whole graph at normal strength.
 - **Sources:** click any node for a pop-up with its details and every report it comes from: the report's kind, department and date, the quoted sentence the node was read from, and what else that report documents (click to follow). A report shows everything it documents; the patient shows all their reports.
 - **Right column:** the patient (✕ goes back to the search), the pill and its status, the question it heard, the conversation as text when **Show model response** is on (with source links), and the typed fallback.
 
-Designed for a 16:9 laptop or projector (1440×900, 1920×1080; works from 1280 wide). The look is the light version of `mockup/DESIGN.md`: Inter and Departure Mono (both SIL Open Font License, self-hosted; no font requests to Google), cool greys and one accent blue.
+Designed for a 16:9 laptop or projector (1440×900, 1920×1080; works from 1280 wide). The look is the light version of `mockup/DESIGN.md`: Inter and Departure Mono, plus Caveat for the pencilled hint (all SIL Open Font License, self-hosted; no font requests to Google), cool greys and one accent blue.
 
 ## Not connected yet
 
