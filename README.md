@@ -1,5 +1,9 @@
 # ClinGraph AI · v1
 
+**Live demo: [clingraph-ai.vercel.app](https://clingraph-ai.vercel.app)** (try the patient Martin Keller)
+
+Built at the [Healthcare Hackathon Bayern 2026](https://www.eventbrite.de/e/healthcare-hackathon-bayern-erlangen-2026-tickets-1975590123240) in Erlangen (12–14 November 2026, Medical Valley EMN). This is a fork of the team's repository, [Vishwa-Balasubramanian/DOKU](https://github.com/Vishwa-Balasubramanian/DOKU); its contributors are [@karthikraghu](https://github.com/karthikraghu), [@Vishwa-Balasubramanian](https://github.com/Vishwa-Balasubramanian) and [@gokulrece2311](https://github.com/gokulrece2311). The fork runs the hosted demo for free: answers and voice through Groq's free tier, with the browser's own voice and hand-written topic answers as fallbacks when a quota runs out.
+
 Find a patient, tap the pill and ask about their history out loud. ClinGraph answers by voice from the patient's reports and opens their knowledge graph with what the answer is about highlighted; click any highlighted item to see the report sentence it came from.
 
 > **Demo data.** For the demo the reports are taken as already uploaded (or connected from an external source), so there is no upload. The patients, the knowledge graph and the report excerpts are hardcoded in `frontend/src/demo/data.ts`. The record is the synthetic urology case in the five demo PDFs (Martin Keller, SYN-URO-001, January to March 2026: a 6 mm left ureteric stone, stented, then treated by ureteroscopy), and the pop-up quotes follow the PDFs' wording. Changing the case means changing that file only; keep its shapes and IDs.
@@ -50,7 +54,13 @@ The suggested questions have scripted answers that appear at once. Any other que
 
 ## Deploy (Vercel)
 
-`vercel.json` deploys two Vercel services on one domain: `web` (the Vite interface in `frontend/`) and `api` (the FastAPI backend, entry `api/index.py`). `/api/*` goes to `api`, everything else to `web`; no bindings are needed because the browser calls `/api` directly. In the Vercel project settings add the environment variables `ELEVENLABS_API_KEY` and `FIREWORKS_API_KEY` (optionally `LLM_MODEL`, `ELEVENLABS_VOICE_ID`), then deploy with `npx vercel --prod` or by importing the GitHub repo. The backend only answers its own deployment domain (from Vercel's `VERCEL_*` variables) and localhost; add others to `ALLOWED_HOSTS` (comma-separated). Anyone who can open the URL spends your ElevenLabs and Fireworks credits, so keep the link private or turn on Vercel's deployment protection.
+`vercel.json` deploys two Vercel services on one domain: `web` (the Vite interface in `frontend/`) and `api` (the FastAPI backend, entry `api/index.py`). `/api/*` goes to `api`, everything else to `web`; no bindings are needed because the browser calls `/api` directly. Then add the keys as environment variables in the Vercel project settings and deploy with `npx vercel --prod`, or import the GitHub repo.
+
+- **Free (the hosted demo):** `GROQ_API_KEY`, `LLM_MODEL=groq:openai/gpt-oss-120b` and `LLM_REASONING_EFFORT=low`. This one key gives the answers, Whisper and Orpheus (accept Orpheus' terms once in the Groq console). Optionally `GROQ_VOICE`. Nothing is charged: past the free limits (Orpheus allows 100 sentences a day), answers fall back to the topic answers and the voice to the browser's.
+- **Paid:** `ELEVENLABS_API_KEY` for the voice and `FIREWORKS_API_KEY` for the answers (optionally `LLM_MODEL`, `ELEVENLABS_VOICE_ID`). Anyone who can open the URL spends these credits, so keep the link private or turn on Vercel's deployment protection.
+- **No keys:** the app still runs, with the browser's voice and the topic answers.
+
+The backend only answers its own deployment domain (from Vercel's `VERCEL_*` variables) and localhost; add others to `ALLOWED_HOSTS` (comma-separated).
 
 ## What v1 does
 
