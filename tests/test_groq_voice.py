@@ -100,6 +100,20 @@ def test_splitting_prefers_commas_and_keeps_every_word() -> None:
     assert split_for_speech("Short.") == ["Short."]
 
 
+def test_a_streaming_header_is_rewritten_with_the_real_length() -> None:
+    clip = bytearray(wav(48))
+    clip[4:8] = clip[40:44] = b"\xff\xff\xff\x7f"  # RIFF and data sizes claim far more than is there
+    with wave.open(io.BytesIO(join_wavs([bytes(clip)]))) as w:
+        assert w.getnframes() == 48
+
+
+def test_no_warm_up_request_spends_the_daily_quota(fake: FakeGroq) -> None:
+    groq = GroqVoice(api_key=KEY, transport=httpx.MockTransport(fake))
+    with TestClient(create_app(client=groq, answerer=NO_ANSWERER)):
+        pass
+    assert fake.requests == []
+
+
 def test_joined_wav_keeps_the_format() -> None:
     joined = join_wavs([wav(10), wav(20)])
     with wave.open(io.BytesIO(joined)) as w:

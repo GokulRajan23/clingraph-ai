@@ -3,7 +3,11 @@ ElevenLabs client (transcribe, speak, warm_up, aclose), so the endpoints take ei
 (GROQ_API_KEY, the one the answers use) never leaves the server.
 
 Orpheus on Groq takes at most 200 characters a request and returns only WAV, so a longer sentence
-is split at its commas (or spaces) and the pieces' audio is joined into one WAV.
+is split at its commas (or spaces) and the pieces' audio is joined into one WAV. Its WAV header
+is a streaming placeholder (it claims ~25 hours), so every clip is rewritten with its real length.
+
+The free tier allows Orpheus 100 requests a day (a request per sentence, measured 2026-11-16), so
+there is no warm-up request; past the limit the frontend reads answers with the browser's voice.
 """
 
 from __future__ import annotations
@@ -28,7 +32,6 @@ DEFAULT_STT_MODEL = "whisper-large-v3"
 DEFAULT_TTS_MODEL = "canopylabs/orpheus-v1-english"
 DEFAULT_VOICE = "daniel"
 MAX_TTS_CHARS = 200
-WARM_UP_TEXT = "Ready."
 # Whisper's prompt biases it towards these spellings (up to 224 tokens): the record's clinical words.
 STT_PROMPT = (
     "Questions about Martin Keller's urology record: ureteric stone, hydroureteronephrosis, "
@@ -66,15 +69,14 @@ def split_for_speech(text: str, limit: int = MAX_TTS_CHARS) -> list[str]:
 
 
 def join_wavs(clips: list[bytes]) -> bytes:
-    """One WAV from several with the same format (Orpheus always returns the same)."""
-    if len(clips) == 1:
-        return clips[0]
+    """One WAV, with a header that states its real length, from clips of the same format (Orpheus
+    always returns the same). Each clip's frames are read to its end, whatever its header claims."""
     out = io.BytesIO()
     with wave.open(out, "wb") as joined:
         for i, clip in enumerate(clips):
             with wave.open(io.BytesIO(clip), "rb") as part:
                 if i == 0:
-                    joined.setparams(part.getparams())
+                    joined.setparams(part.getparams()._replace(nframes=0))
                 joined.writeframes(part.readframes(part.getnframes()))
     return out.getvalue()
 
@@ -143,8 +145,8 @@ class GroqVoice:
         return audio
 
     async def warm_up(self) -> None:
-        """One tiny synthesis, so the first real answer doesn't also pay for the connection."""
-        await self.speak(WARM_UP_TEXT)
+        """Nothing: a warm-up synthesis would spend one of the day's 100 Orpheus requests on every
+        cold start (each serverless instance), for ~0.2 s of connection setup."""
 
     @staticmethod
     async def _send(request) -> httpx.Response:
