@@ -14,7 +14,7 @@ interface Props {
 
 const time = (at: Date) => at.toTimeString().slice(0, 5)
 
-/** The conversation as text, for when "Show model response" is on: question headers, answer paragraphs, sources. */
+/** The conversation as text, streamed as it is spoken: question headers, answer paragraphs with the claim behind them, sources. */
 export function Thread({ messages, pending, graph, onSource, onRetry }: Props) {
   const end = useRef<HTMLDivElement>(null)
 
@@ -35,6 +35,12 @@ export function Thread({ messages, pending, graph, onSource, onRetry }: Props) {
         ) : (
           <div key={message.id} className="answer">
             <p>{message.answer.sentences.join(' ')}</p>
+            {message.answer.why && (
+              <p className="why">
+                <span className="mono">WHY</span>
+                {message.answer.why}
+              </p>
+            )}
             {message.answer.cutShort && (
               <p className="cut">
                 The answer was cut short.{' '}

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import { ask, voiceStatus } from './api'
-import { historyOf, speakable, type Answer } from './chat/script'
+import { historyOf, speakable, withWhy, type Answer } from './chat/script'
 import { GraphView } from './components/GraphView'
 import { HistoryTimeline } from './components/HistoryTimeline'
 import { Legend, Logo } from './components/Marks'
@@ -9,8 +9,8 @@ import { PatientSearch } from './components/PatientSearch'
 import { SourceModal } from './components/SourceModal'
 import { Thread } from './components/Thread'
 import { PATIENTS, SOURCES, type Patient } from './demo/data'
+import { nodeById } from './graph/query'
 import { firstName } from './patients'
-import { usePersistentChoice } from './persist'
 import { browserVoiceSupported } from './voice/browser'
 import { phaseStatus, pillMode, voicePhase } from './voice/phase'
 import { mark } from './voice/timing'
@@ -31,11 +31,15 @@ const nextId = (prefix: string) => `${prefix}-${++sequence}`
 const VOICE_STATUS_RETRY_MS = 2000
 /** Microphone RMS a raised voice reaches; the pill swells no further. */
 const LOUD = 0.15
+/** How far (px) the sheet's handle must be dragged to open or close it, rather than tapped. */
+const DRAG = 24
 
 /**
  * The whole app: pick a patient, tap the pill and ask. The first answer opens the patient's
  * knowledge graph across most of the screen, with what the answer is about highlighted; the pill
- * moves to the column on the right. Answers are spoken; their text is shown only on request.
+ * moves to the column on the right, where the answer's text streams in as it is spoken. On a phone
+ * the column is a sheet under the graph: it shows the latest line of the answer, and pulling it up
+ * opens the whole conversation over the graph.
  */
 export default function App() {
   const [patient, setPatient] = useState<Patient | null>(null)
@@ -49,7 +53,9 @@ export default function App() {
   const voiceEnabled = voiceMode !== 'off'
   const [typing, setTyping] = useState(false)
   const [draft, setDraft] = useState('')
-  const [response, setResponse] = usePersistentChoice('clingraph.response', 'hidden', ['hidden', 'shown'] as const)
+  // Phones only: the conversation is tucked under the graph ('peek') or pulled up over it ('full').
+  const [sheet, setSheet] = useState<'peek' | 'full'>('peek')
+  const drag = useRef<{ y: number; moved: boolean } | null>(null)
   // Bumped when the patient changes, so an answer still in flight is dropped.
   const conversation = useRef(0)
   // The answer being streamed, so a new question or a reset can stop it.
@@ -98,6 +104,7 @@ export default function App() {
     const history = historyOf(messages)
     const id = nextId('answer')
     let said = 0
+    let whySaid = false
     const show = (answer: Answer) => {
       setPending(false)
       setMessages((current) =>
@@ -105,6 +112,11 @@ export default function App() {
       )
       if (!aloud) return
       for (; said < answer.sentences.length; said++) speech.say(id, speakable(answer.sentences[said]))
+      // The claim behind the answer is the last thing said.
+      if (answer.why && !whySaid) {
+        whySaid = true
+        speech.say(id, speakable(answer.why))
+      }
     }
     setMessages((current) => [...current, { id: nextId('question'), role: 'user', text: question, spoken, at: new Date() }])
     setPending(true)
@@ -112,16 +124,16 @@ export default function App() {
       question,
       graph,
       history,
-      (sentences) => {
+      (sentences, why) => {
         if (!live()) return
         if (said === 0) mark('first sentence')
-        show({ sentences, sources: [], highlight: [] })
+        show({ sentences, why, sources: [], highlight: [] })
       },
       request.signal,
     )
     if (!live()) return
     inFlight.current = null
-    show(answer)
+    show(withWhy(answer, (report) => nodeById(graph, report)?.label))
     if (aloud) speech.finish(id)
     setHighlight(answer.highlight)
   }
@@ -147,6 +159,7 @@ export default function App() {
     setHighlight(null)
     setSourceId(null)
     setTyping(false)
+    setSheet('peek')
     speech.reset()
     voiceInput.cancel()
   }
@@ -164,9 +177,31 @@ export default function App() {
   const talking = phase === 'preparing' || phase === 'speaking'
   const lastQuestion = messages.findLast((m) => m.role === 'user')
   const error = voiceInput.error ?? speech.error
-  // Without voice the text is the only answer there is.
-  const showThread = open && (response === 'shown' || !voiceEnabled)
   const showInput = typing || !voiceEnabled
+  const status = !patient ? '' : voiceEnabled ? phaseStatus(phase, firstName(patient), messages.length > 0) : 'VOICE IS OFF · TYPE YOUR QUESTION'
+  // The sheet's one-line preview: the question while it is being answered, then the line just said.
+  const last = messages.at(-1)
+  const preview = !last ? '' : last.role === 'user' ? `“${last.text}”` : (last.answer.why ?? last.answer.sentences.at(-1) ?? '')
+
+  const toggleSheet = () => setSheet((current) => (current === 'full' ? 'peek' : 'full'))
+  // The sheet's handles: tap to toggle, or drag up to open and down to close.
+  const handle = {
+    onPointerDown: (event: PointerEvent) => {
+      drag.current = { y: event.clientY, moved: false }
+    },
+    onPointerUp: (event: PointerEvent) => {
+      const start = drag.current
+      if (!start) return
+      const dy = event.clientY - start.y
+      if (Math.abs(dy) < DRAG) return
+      start.moved = true
+      setSheet(dy < 0 ? 'full' : 'peek')
+    },
+    onClick: () => {
+      if (!drag.current?.moved) toggleSheet()
+      drag.current = null
+    },
+  }
 
   const onPill = () => {
     if (talking) return speech.stop()
@@ -188,7 +223,7 @@ export default function App() {
   }
 
   return (
-    <div className={open ? 'app open' : 'app'}>
+    <div className={open ? `app open sheet-${sheet}` : 'app'}>
       <main className="stage" aria-label="Knowledge graph" aria-hidden={!open}>
         {open && graph && (
           <>
@@ -228,6 +263,14 @@ export default function App() {
 
           {patient && graph && !open && patient.timeline.length > 0 && <HistoryTimeline stops={patient.timeline} onOpen={setSourceId} />}
 
+          {open && (
+            <button type="button" className="peek" aria-expanded={sheet === 'full'} aria-label={sheet === 'full' ? 'Back to the graph' : 'Open the conversation'} {...handle}>
+              <span className="grip" aria-hidden="true" />
+              <span className="line">{preview || 'Ask a question to see the answer here'}</span>
+              <ChevronIcon up={sheet === 'peek'} />
+            </button>
+          )}
+
           {graph && (
             <>
               <button
@@ -240,9 +283,11 @@ export default function App() {
               >
                 <ParticlePill mode={pillMode(phase)} level={() => voiceInput.level() / LOUD / 6} count={open ? 6000 : 12000} scale={open ? 0.7 : 0.8} />
               </button>
-              <p className="status" aria-live="polite">
-                {voiceEnabled ? phaseStatus(phase, firstName(patient!), messages.length > 0) : 'VOICE IS OFF · TYPE YOUR QUESTION'}
-              </p>
+              {status && (
+                <p className="status" aria-live="polite">
+                  {status}
+                </p>
+              )}
               {phase === 'listening' && (
                 <button type="button" className="link" onClick={voiceInput.cancel}>
                   Cancel
@@ -258,7 +303,16 @@ export default function App() {
           )}
         </div>
 
-        {showThread && <Thread messages={messages} pending={pending} graph={graph!} onSource={setSourceId} onRetry={retry} />}
+        {open && (
+          <section className="chat" aria-label="Conversation">
+            <button type="button" className="sheet-head" aria-label="Back to the graph" {...handle}>
+              <span className="grip" aria-hidden="true" />
+              <span className="mono">CONVERSATION</span>
+              <ChevronIcon up={false} />
+            </button>
+            <Thread messages={messages} pending={pending} graph={graph!} onSource={setSourceId} onRetry={retry} />
+          </section>
+        )}
 
         {graph && (
           <footer className="controls">
@@ -286,12 +340,6 @@ export default function App() {
               </form>
             )}
             <div className="toggles">
-              {open && voiceEnabled && (
-                <label className="check">
-                  <input type="checkbox" checked={response === 'shown'} onChange={(event) => setResponse(event.target.checked ? 'shown' : 'hidden')} />
-                  Show model response
-                </label>
-              )}
               {voiceEnabled && (
                 <button
                   type="button"
@@ -310,6 +358,14 @@ export default function App() {
 
       {graph && <SourceModal graph={graph} sources={SOURCES} nodeId={sourceId} onClose={() => setSourceId(null)} onSelect={setSourceId} />}
     </div>
+  )
+}
+
+function ChevronIcon({ up }: { up: boolean }) {
+  return (
+    <svg className="chevron" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+      <path d={up ? 'M3.5 8.5 7 5l3.5 3.5' : 'M3.5 5.5 7 9l3.5-3.5'} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   )
 }
 

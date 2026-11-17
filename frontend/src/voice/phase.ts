@@ -29,8 +29,9 @@ export function voicePhase({ ready, input, pending, loading, playing }: PhaseInp
 }
 
 /**
- * The status caption under the pill, in capitals. `name` is the patient's first name; `followUp`
- * once a question has been answered.
+ * The status caption under the pill, in capitals: only what the doctor has to do (tap, or talk).
+ * While the answer is being worked out or spoken the pill's motion says so, and the caption is
+ * empty. `name` is the patient's first name; `followUp` once a question has been answered.
  */
 export function phaseStatus(phase: VoicePhase, name: string, followUp: boolean): string {
   switch (phase) {
@@ -41,13 +42,10 @@ export function phaseStatus(phase: VoicePhase, name: string, followUp: boolean):
     case 'listening':
       return 'LISTENING · PAUSE WHEN DONE'
     case 'transcribing':
-      return 'TRANSCRIBING'
     case 'thinking':
-      return 'READING THE REPORTS'
     case 'preparing':
-      return 'PREPARING VOICE'
     case 'speaking':
-      return 'SPEAKING · TAP TO STOP'
+      return ''
   }
 }
 

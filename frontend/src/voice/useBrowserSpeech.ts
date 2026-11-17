@@ -95,7 +95,7 @@ export function useBrowserSpeech() {
       s.cancel()
       setLoadingId(null)
       setPlayingId(null)
-      setError("This browser couldn't read the answer aloud. Tick “Show model response” to read it.")
+      setError("This browser couldn't read the answer aloud. Its text is in the conversation.")
     }, START_TIMEOUT_MS)
   }
 

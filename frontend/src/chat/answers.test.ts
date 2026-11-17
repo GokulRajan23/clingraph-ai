@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { historyOf, readAnswer, scriptedAnswer, SUGGESTIONS } from './script'
+import { historyOf, readAnswer, scriptedAnswer, SUGGESTIONS, withWhy } from './script'
 
 describe('answers', () => {
   it('only suggested questions are scripted', () => {
@@ -16,7 +16,7 @@ describe('answers', () => {
     ], 2)
     expect(history).toEqual([
       { role: 'user', text: 'What is the current treatment?' },
-      { role: 'assistant', text: [...answer.sentences, `HIGHLIGHT: ${answer.highlight.join(', ')}`].join('\n') },
+      { role: 'assistant', text: [...answer.sentences, `WHY: ${answer.why}`, `HIGHLIGHT: ${answer.highlight.join(', ')}`].join('\n') },
     ])
   })
 })
@@ -55,8 +55,37 @@ describe('streamed answers', () => {
     expect(answer.sentences[0]).toContain('The language model failed')
   })
 
+  it('keeps the why line apart from the sentences', async () => {
+    const seen: (string | undefined)[] = []
+    const answer = await readAnswer(
+      body(event({ type: 'sentence', text: 'Pembrolizumab.' }), event({ type: 'why', text: 'Because the March letter starts it.' }), event({ type: 'done', sources: ['r3'], highlight: ['r3'] })),
+      (_, why) => seen.push(why),
+    )
+    expect(seen).toEqual([undefined, 'Because the March letter starts it.'])
+    expect(answer).toEqual({ sentences: ['Pembrolizumab.'], why: 'Because the March letter starts it.', sources: ['r3'], highlight: ['r3'] })
+  })
+
   it('treats a stream that just stops as cut short', async () => {
     const answer = await readAnswer(body(event({ type: 'sentence', text: 'Stable.' })), () => undefined)
     expect(answer.cutShort).toBe(true)
+  })
+})
+
+describe('why lines', () => {
+  const label = (id: string) => ({ r1: 'Initial urology assessment · 12 Jan 2026', r5: 'Follow-up and medication review · 2 Mar 2026' })[id]
+
+  it('every suggested answer gives its claim', () => {
+    for (const s of SUGGESTIONS) expect(s.answer.why).toMatch(/^Because /)
+  })
+
+  it('builds one from the sources when the model gave none', () => {
+    expect(withWhy({ sentences: ['Stable.'], sources: ['r1', 'r5'], highlight: [] }, label).why).toBe(
+      "Because it's in the initial urology assessment of 12 Jan 2026 and the follow-up and medication review of 2 Mar 2026.",
+    )
+  })
+
+  it("keeps the model's own, and adds none without sources", () => {
+    expect(withWhy({ sentences: ['x'], why: 'Because r1.', sources: ['r1'], highlight: [] }, label).why).toBe('Because r1.')
+    expect(withWhy({ sentences: ['x'], sources: [], highlight: [] }, label).why).toBeUndefined()
   })
 })

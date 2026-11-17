@@ -8,13 +8,16 @@ type Link = LinkObject<GraphNode, GraphEdge>
 
 const FADED = 0.2
 const LABEL_MAX = 48
+/** Below this width (a phone) labels are cut shorter, so they stay on screen. */
+const NARROW = 600
+const LABEL_MAX_NARROW = 24
 /** Same family as the page (styles.css `--font`); canvas text does not inherit CSS. */
 const FONT = "'Inter Variable', system-ui, sans-serif"
 // Relations every report link has; labelling them only adds noise.
 const UNLABELLED = new Set(['documented_in', 'has_report'])
 
 const endId = (end: Link['source']): string => (typeof end === 'object' && end !== null ? String((end as Node).id) : String(end))
-const truncate = (text: string) => (text.length > LABEL_MAX ? `${text.slice(0, LABEL_MAX - 1)}…` : text)
+const truncate = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text)
 
 interface Props {
   graph: Graph
@@ -55,7 +58,9 @@ export function GraphView({ graph, highlight, onSelect }: Props) {
   }, [data, size.width > 0])
 
   // Frame the answer (or everything) whenever it changes, once the layout has settled.
-  const frameView = () => engine.current?.zoomToFit(700, 90, lit ? (n) => lit.has(String(n.id)) : undefined)
+  const narrow = size.width < NARROW
+  // The margin has to fit half a label either side of the outermost nodes.
+  const frameView = () => engine.current?.zoomToFit(700, narrow ? 84 : 90, lit ? (n) => lit.has(String(n.id)) : undefined)
   useEffect(() => {
     if (settled.current) frameView()
   }, [lit, size.width])
@@ -101,7 +106,7 @@ export function GraphView({ graph, highlight, onSelect }: Props) {
               ctx.font = `${accent ? 600 : 500} ${fontSize}px ${FONT}`
               ctx.textAlign = 'center'
               ctx.textBaseline = 'top'
-              const text = truncate(n.label)
+              const text = truncate(n.label, narrow ? LABEL_MAX_NARROW : LABEL_MAX)
               const ty = y + r + 3 / scale
               ctx.lineWidth = 3 / scale
               ctx.strokeStyle = INK.page

@@ -5,9 +5,10 @@ The model is whatever LangChain's `init_chat_model` makes of LLM_MODEL ("provide
 environment (FIREWORKS_API_KEY for Fireworks). The frontend sends the graph it shows with every
 question, so the answer's sources and highlights are nodes the UI knows.
 
-The model answers like a colleague, one sentence per line, then one "HIGHLIGHT: ..." line naming
-the nodes the answer is about; the reports among them are its sources. Each sentence is sent on as
-soon as it is complete, so the first can be spoken while the rest are still being written.
+The model answers like a colleague, one sentence per line, then one "WHY: ..." line with the
+evidence behind the answer, then one "HIGHLIGHT: ..." line naming the nodes the answer is about;
+the reports among them are its sources. Each sentence is sent on as soon as it is complete, so the
+first can be spoken while the rest are still being written; the why line follows them.
 """
 
 from __future__ import annotations
@@ -84,11 +85,14 @@ How to talk:
 - Follow-up questions build on the conversation so far: do not repeat what was already said.
 - The question may be a speech transcript: allow for misheard words (for example "pembro" for pembrolizumab).
 
-Format: plain text, no markdown, one sentence per line. Then one last line: "HIGHLIGHT:" and the comma-separated IDs of the nodes the answer is about, including the report nodes the facts come from (a node's reports are the targets of its documented_in relations; an observation's report is the one with the same date).
+Why: after the answer, give the claim behind it in one line starting "WHY: Because", one short sentence naming the report (its kind and date) and what it records. It is read aloud after the answer, so say it the same natural way. When the record has no answer, the why line says what you looked for (for example "WHY: Because none of her reports records a blood group.").
+
+Format: plain text, no markdown, one sentence per line. Then the WHY line. Then one last line: "HIGHLIGHT:" and the comma-separated IDs of the nodes the answer is about, including the report nodes the facts come from (a node's reports are the targets of its documented_in relations; an observation's report is the one with the same date).
 
 Example, for a different patient:
 The thyroid nodule hasn't changed, it's been 12 mm on every scan since June 2021.
 It was last measured in April 2024, with no new findings.
+WHY: Because the ultrasound reports from June 2021 to April 2024 all measure it at 12 mm.
 HIGHLIGHT: thyroid-nodule, thyroid-nodule-1, thyroid-nodule-3, r1, r4
 
 Patient record:
@@ -116,13 +120,15 @@ def build_messages(request: AskRequest) -> list[BaseMessage]:
 _BRACKETS = re.compile(r"\s*\[[^\[\]]*\]")
 _BULLET = re.compile(r"^(?:[-*•]|\d+[.)])\s+")
 _HIGHLIGHT = re.compile(r"^\W*highlight\W*:(.*)$", re.IGNORECASE)
+_WHY = re.compile(r"^\W*why\W*:(.*)$", re.IGNORECASE)
 
 
 class SentenceReader:
     """Reads the model's text, fed in chunks, into sentences and the nodes the answer is about.
 
-    Only real nodes are highlighted; the reports among them are the sources. Bullets, stray
-    citation brackets, blank lines and anything past MAX_SENTENCES are dropped.
+    Only real nodes are highlighted; the reports among them are the sources. The WHY line is kept
+    apart as `why`. Bullets, stray citation brackets, blank lines and anything past MAX_SENTENCES
+    are dropped.
     """
 
     def __init__(self, graph: Graph) -> None:
@@ -130,6 +136,7 @@ class SentenceReader:
         self._buffer = ""
         self.highlight: list[str] = []
         self.sentences: list[str] = []
+        self.why: str | None = None
 
     @property
     def sources(self) -> list[str]:
@@ -158,11 +165,18 @@ class SentenceReader:
             ids = [part.strip() for part in match.group(1).strip(" []").split(",")]
             self.highlight = list(dict.fromkeys(self.highlight + [i for i in ids if i in self._nodes]))
             return None
-        text = " ".join(_BULLET.sub("", _BRACKETS.sub("", text)).split())
+        if match := _WHY.match(text):
+            self.why = self.why or _clean(match.group(1)) or None
+            return None
+        text = _clean(text)
         if not text or len(self.sentences) >= MAX_SENTENCES:
             return None
         self.sentences.append(text)
         return text
+
+
+def _clean(text: str) -> str:
+    return " ".join(_BULLET.sub("", _BRACKETS.sub("", text)).split())
 
 
 class AnswerError(Exception):
@@ -180,20 +194,27 @@ class Answerer:
         self._model = model
 
     async def stream(self, request: AskRequest) -> AsyncIterator[dict[str, Any]]:
-        """Yields {"type": "sentence", "text"} as sentences complete, then {"type": "done", "sources", "highlight"}."""
+        """Yields {"type": "sentence", "text"} as sentences complete, {"type": "why", "text"} once the
+        why line is in, then {"type": "done", "sources", "highlight"}."""
         reader = SentenceReader(request.graph)
         start = time.perf_counter()
         first: float | None = None
+        why_sent = False
         async with asyncio.timeout(TIMEOUT_S):
             async for chunk in self._model.astream(build_messages(request)):
                 for sentence in reader.feed(_text_of(chunk)):
                     first = first or time.perf_counter() - start
                     yield {"type": "sentence", "text": sentence}
+                if reader.why and not why_sent:
+                    why_sent = True
+                    yield {"type": "why", "text": reader.why}
         for sentence in reader.finish():
             first = first or time.perf_counter() - start
             yield {"type": "sentence", "text": sentence}
         if not reader.sentences:
             raise AnswerError("The language model returned an empty answer")
+        if reader.why and not why_sent:
+            yield {"type": "why", "text": reader.why}
         log.info("Answer: first sentence %.2f s, done %.2f s, %d sentences", first, time.perf_counter() - start, len(reader.sentences))
         yield {"type": "done", "sources": reader.sources, "highlight": reader.highlight}
 

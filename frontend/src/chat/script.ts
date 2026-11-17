@@ -1,6 +1,7 @@
 /**
  * Answers about the patient's history, phrased the way a colleague would say them: a few sentences,
- * shown as a short paragraph and read aloud, plus the reports they come from and the graph nodes
+ * shown as a short paragraph and read aloud, then the claim behind them (the why line, also read
+ * aloud), plus the reports they come from and the graph nodes
  * they are about (highlighted when the answer appears). The suggested questions have scripted
  * answers; anything else is answered by the backend's LLM (see api.ask).
  */
@@ -8,6 +9,8 @@
 export interface Answer {
   /** What is shown and said, one sentence each. */
   sentences: string[]
+  /** The claim behind the answer: which report records it. Shown and said after the sentences. */
+  why?: string
   /** Report node IDs the answer comes from. */
   sources: string[]
   /** Node IDs to highlight in the graph. Empty for the fallback answer. */
@@ -32,6 +35,7 @@ export const SUGGESTIONS: Suggestion[] = [
         'The left side was mildly dilated on 12 January and moderately dilated by 19 January, when a stent was placed.',
         'It was down to mild by 21 January and had resolved on the 2 March ultrasound.',
       ],
+      why: 'Because the scans grade the dilatation, from mild on the 12 January CT to resolved on the 2 March ultrasound.',
       sources: ['r1', 'r2', 'r3', 'r5'],
       highlight: ['hydro', 'hydro-1', 'hydro-2', 'hydro-3', 'hydro-4', 'stent', 'r1', 'r2', 'r3', 'r5'],
     },
@@ -44,6 +48,7 @@ export const SUGGESTIONS: Suggestion[] = [
         'A double-J stent was placed on 19 January 2026 to relieve the obstruction.',
         'On 2 February a ureteroscopy with laser lithotripsy removed the 6 mm stone, and the stent came out.',
       ],
+      why: 'Because the 19 January admission report records the stent, and the 2 February procedure report the ureteroscopy.',
       sources: ['r2', 'r4'],
       highlight: ['stent', 'ureteroscopy', 'left-stone', 'r2', 'r4'],
     },
@@ -56,6 +61,7 @@ export const SUGGESTIONS: Suggestion[] = [
         'Creatinine is back to 1.0 mg/dL, and the stone turned out to be calcium oxalate.',
         'The 3 mm right kidney stone is unchanged and stays under surveillance.',
       ],
+      why: 'Because the 2 March follow-up review records the resolved obstruction, the creatinine and the stone analysis.',
       sources: ['r5'],
       highlight: ['r5', 'hydro-4', 'creatinine-4', 'analysis', 'right-stone-2', 'left-stone-4'],
     },
@@ -67,6 +73,7 @@ export const SUGGESTIONS: Suggestion[] = [
         'Amlodipine 5 mg each morning is now his only regular medication.',
         "Tamsulosin was stopped on 2 February, and he hasn't needed paracetamol since 5 February.",
       ],
+      why: 'Because the 2 March medication review lists amlodipine as his only regular medication.',
       sources: ['r5'],
       highlight: ['amlodipine', 'tamsulosin', 'paracetamol', 'r5'],
     },
@@ -103,14 +110,16 @@ const isStrings = (value: unknown): value is string[] => Array.isArray(value) &&
 
 /**
  * Reads the backend's streamed answer (NDJSON): a "sentence" event per sentence, then "done" with
- * the sources and highlights, or "error". `onSentence` gets the sentences so far each time one
+ * the sources and highlights, or "error"; a "why" event with the claim behind the answer may come
+ * before "done". `onSentence` gets the sentences so far, and the why once it is in, each time one
  * arrives. If the stream fails after some sentences they are kept and the answer is marked cut
  * short; before any, the answer says what went wrong.
  */
-export async function readAnswer(body: ReadableStream<Uint8Array>, onSentence: (sentences: string[]) => void): Promise<Answer> {
+export async function readAnswer(body: ReadableStream<Uint8Array>, onSentence: (sentences: string[], why?: string) => void): Promise<Answer> {
   const sentences: string[] = []
+  let why: string | undefined
   const end = (problem: string): Answer =>
-    sentences.length > 0 ? { sentences, sources: [], highlight: [], cutShort: true } : { ...problemAnswer(`Sorry, I couldn't answer that just now. ${problem}`), failed: true }
+    sentences.length > 0 ? { sentences, ...(why && { why }), sources: [], highlight: [], cutShort: true } : { ...problemAnswer(`Sorry, I couldn't answer that just now. ${problem}`), failed: true }
   // One event; an Answer once the stream is over.
   const handle = (raw: string): Answer | null => {
     if (!raw.trim()) return null
@@ -122,9 +131,12 @@ export async function readAnswer(body: ReadableStream<Uint8Array>, onSentence: (
     }
     if (event.type === 'sentence' && typeof event.text === 'string' && event.text.trim()) {
       sentences.push(event.text.trim())
-      onSentence([...sentences])
+      onSentence([...sentences], why)
+    } else if (event.type === 'why' && typeof event.text === 'string' && event.text.trim()) {
+      why = event.text.trim()
+      onSentence([...sentences], why)
     } else if (event.type === 'done' && sentences.length > 0) {
-      return { sentences, sources: isStrings(event.sources) ? event.sources : [], highlight: isStrings(event.highlight) ? event.highlight : [] }
+      return { sentences, ...(why && { why }), sources: isStrings(event.sources) ? event.sources : [], highlight: isStrings(event.highlight) ? event.highlight : [] }
     } else if (event.type === 'error' || event.type === 'done') {
       return end(typeof event.detail === 'string' ? event.detail : 'The answer service failed')
     }
@@ -167,7 +179,27 @@ export function historyOf(messages: ({ role: 'user'; text: string } | { role: 'a
   return messages.slice(-limit).map((m) => (m.role === 'user' ? { role: 'user', text: m.text } : { role: 'assistant', text: modelText(m.answer) }))
 }
 
-const modelText = (answer: Answer) => [...answer.sentences, `HIGHLIGHT: ${answer.highlight.join(', ')}`].join('\n')
+const modelText = (answer: Answer) => [...answer.sentences, ...(answer.why ? [`WHY: ${answer.why}`] : []), `HIGHLIGHT: ${answer.highlight.join(', ')}`].join('\n')
+
+/**
+ * The answer with a why line: the model's or a scripted one when it has it, else one built from the
+ * reports it comes from ("Because it's in the hospital discharge summary of 21 Jan 2026."). An answer
+ * with no sources keeps none: there is nothing to point to.
+ */
+export function withWhy(answer: Answer, reportLabel: (id: string) => string | undefined): Answer {
+  if (answer.why || answer.failed || answer.sources.length === 0) return answer
+  const reports = answer.sources.map(reportLabel).filter((label): label is string => !!label).map(spokenReport)
+  if (reports.length === 0) return answer
+  const list = reports.length === 1 ? reports[0] : `${reports.slice(0, -1).join(', ')} and ${reports.at(-1)}`
+  return { ...answer, why: `Because it's in ${list}.` }
+}
+
+/** "Hospital discharge summary · 21 Jan 2026" → "the hospital discharge summary of 21 Jan 2026". */
+const spokenReport = (label: string) => {
+  const [kind, date] = label.split(' · ')
+  const name = kind.charAt(0).toLowerCase() + kind.slice(1)
+  return date ? `the ${name} of ${date}` : `the ${name}`
+}
 
 // Clinical shorthand a voice would read letter by letter.
 const SPOKEN: [RegExp, string][] = [

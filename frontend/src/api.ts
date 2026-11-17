@@ -15,11 +15,11 @@ const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve,
 /**
  * Answers a question about the graph. Suggested questions get their scripted answer at once;
  * anything else goes to the LLM with the graph and the conversation so far, and `onSentence` is
- * called with the sentences so far as each one arrives. Without the backend or a configured model,
+ * called with the sentences so far as each one arrives, and the why line once it is in. Without the backend or a configured model,
  * or when the model fails before saying anything (e.g. its free quota is used up), the answer for
  * the question's topic is given (chat/topics.ts), else the fallback answer says what can be asked.
  */
-export async function ask(question: string, graph: Graph, history: Turn[], onSentence: (sentences: string[]) => void, signal?: AbortSignal): Promise<Answer> {
+export async function ask(question: string, graph: Graph, history: Turn[], onSentence: (sentences: string[], why?: string) => void, signal?: AbortSignal): Promise<Answer> {
   const scripted = scriptedAnswer(question)
   if (scripted) {
     await wait(ANSWER_MS)

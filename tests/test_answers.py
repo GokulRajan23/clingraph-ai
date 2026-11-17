@@ -74,6 +74,20 @@ def test_streams_sentences_then_sources_and_highlights() -> None:
     ]
 
 
+def test_the_why_line_follows_the_sentences_apart_from_them() -> None:
+    model = FakeModel("She's on pembrolizumab.\nWHY: Because the March 2023 ", "letter starts it.\nHIGHLIGHT: pembrolizumab, r2\n")
+    assert events(ask(client_for(model))) == [
+        {"type": "sentence", "text": "She's on pembrolizumab."},
+        {"type": "why", "text": "Because the March 2023 letter starts it."},
+        {"type": "done", "sources": ["r2"], "highlight": ["pembrolizumab", "r2"]},
+    ]
+
+
+def test_a_why_line_without_a_newline_still_arrives() -> None:
+    model = FakeModel("Pembrolizumab.\nHIGHLIGHT: r2\nWhy: Because r2 says so.")
+    assert {"type": "why", "text": "Because r2 says so."} in events(ask(client_for(model)))
+
+
 def test_a_sentence_is_sent_as_soon_as_it_is_complete() -> None:
     sentences = reader()
     assert sentences.feed("Stable at 19 ") == []

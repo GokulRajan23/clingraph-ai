@@ -27,6 +27,11 @@ describe('voice phase', () => {
     expect(phaseStatus('idle', 'Martin', true)).toBe('TAP TO ASK A FOLLOW-UP')
   })
 
+  it('says nothing under the pill while it works or speaks', () => {
+    expect(phaseStatus('listening', 'Martin', false)).toBe('LISTENING · PAUSE WHEN DONE')
+    for (const phase of ['transcribing', 'thinking', 'preparing', 'speaking'] as const) expect(phaseStatus(phase, 'Martin', true)).toBe('')
+  })
+
   it('moves the pill with the phase', () => {
     expect(pillMode('listening')).toBe('listening')
     expect(pillMode('thinking')).toBe('thinking')
