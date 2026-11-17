@@ -105,6 +105,9 @@ ul { list-style: none; }
 .app:not(.open) .brand { justify-content: center; gap: 22px; margin-top: 22px; font-size: 54px; letter-spacing: -.03em; animation: rise .6s var(--spring) both; }
 .app:not(.open) .brand .logo { width: 84px; height: 54px; }
 .logo { color: var(--text-primary); flex: none; }
+/* Once a patient is open the mark is a way home. */
+.home { display: inherit; align-items: inherit; gap: inherit; border-radius: 8px; transition: opacity .2s; }
+.home:hover { opacity: .65; }
 
 /* ---------- the voice block: centred on the landing, at the top of the column once the graph is open ---------- */
 .voice { display: flex; flex-direction: column; align-items: center; gap: 14px; margin: auto 0; width: 100%; }

@@ -235,8 +235,18 @@ export default function App() {
 
       <aside className="side">
         <header className="brand">
-          <Logo />
-          <span>ClinGraph</span>
+          {patient ? (
+            // Back to the home screen from anywhere, like the patient's ✕.
+            <button type="button" className="home" aria-label="ClinGraph: back to the home screen" title="Back to the home screen" onClick={clearPatient}>
+              <Logo />
+              <span>ClinGraph</span>
+            </button>
+          ) : (
+            <>
+              <Logo />
+              <span>ClinGraph</span>
+            </>
+          )}
         </header>
 
         <div className="voice">
